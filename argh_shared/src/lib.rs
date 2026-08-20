@@ -156,11 +156,18 @@ pub enum Optionality {
 }
 
 pub const INDENT: &str = "  ";
-const DESCRIPTION_INDENT: usize = 20;
 const WRAP_WIDTH: usize = 80;
 
+/// The number of spaces placed between the longest command/flag name and its
+/// description when rendering help columns.
+pub const DESCRIPTION_PADDING: usize = 2;
+
 /// Write command names and descriptions to an output string.
-pub fn write_description(out: &mut String, cmd: &CommandInfo<'_>) {
+///
+/// `description_indent` is the column (in characters) at which the description
+/// starts. Compute it from the longest name in the group being rendered via
+/// [`description_indent`].
+pub fn write_description(out: &mut String, cmd: &CommandInfo<'_>, description_indent: usize) {
     let mut current_line = INDENT.to_string();
     current_line.push_str(cmd.name);
 
@@ -173,15 +180,15 @@ pub fn write_description(out: &mut String, cmd: &CommandInfo<'_>) {
         return;
     }
 
-    if !indent_description(&mut current_line) {
+    if !indent_description(&mut current_line, description_indent) {
         // Start the description on a new line if the flag names already
-        // add up to more than DESCRIPTION_INDENT.
+        // add up to more than `description_indent`.
         new_line(&mut current_line, out);
     }
 
     let mut words = cmd.description.split(' ').peekable();
     while let Some(first_word) = words.next() {
-        indent_description(&mut current_line);
+        indent_description(&mut current_line, description_indent);
         current_line.push_str(first_word);
 
         'inner: while let Some(&word) = words.peek() {
@@ -199,12 +206,30 @@ pub fn write_description(out: &mut String, cmd: &CommandInfo<'_>) {
     new_line(&mut current_line, out);
 }
 
-// Indent the current line in to DESCRIPTION_INDENT chars.
+/// Returns the column at which descriptions should start so that every name in
+/// `commands` is left-aligned with a [`DESCRIPTION_PADDING`]-space separator,
+/// growing with the longest name in the group.
+pub fn description_indent<'a>(commands: impl Iterator<Item = &'a CommandInfo<'a>>) -> usize {
+    let max_name = commands
+        .map(|cmd| {
+            let mut len = INDENT.chars().count() + char_len(cmd.name);
+            if *cmd.short != '\0' {
+                // The rendered `  <short>` alias.
+                len += 3;
+            }
+            len
+        })
+        .max()
+        .unwrap_or(0);
+    max_name + DESCRIPTION_PADDING
+}
+
+// Indent the current line to `description_indent` chars.
 // Returns a boolean indicating whether or not spacing was added.
-fn indent_description(line: &mut String) -> bool {
+fn indent_description(line: &mut String, description_indent: usize) -> bool {
     let cur_len = char_len(line);
-    if cur_len < DESCRIPTION_INDENT {
-        let num_spaces = DESCRIPTION_INDENT - cur_len;
+    if cur_len < description_indent {
+        let num_spaces = description_indent - cur_len;
         line.extend(std::iter::repeat_n(' ', num_spaces));
         true
     } else {

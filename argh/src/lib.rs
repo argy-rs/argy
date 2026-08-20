@@ -1031,6 +1031,7 @@ impl_flag_for_integers![u8, u16, u32, u64, u128, i8, i16, i32, i64, i128,];
 /// `parse_positionals`: Helper to parse positional arguments.
 /// `parse_subcommand`: Helper to parse a subcommand.
 /// `help_func`: Generate a help message.
+/// `version_func`: Generate a version message.
 #[doc(hidden)]
 pub fn parse_struct_args(
     cmd_name: &[&str],
@@ -1039,8 +1040,10 @@ pub fn parse_struct_args(
     mut parse_positionals: ParseStructPositionals<'_>,
     mut parse_subcommand: Option<ParseStructSubCommand<'_>>,
     help_func: &dyn Fn() -> String,
+    version_func: &dyn Fn() -> String,
 ) -> Result<(), EarlyExit> {
     let mut help = false;
+    let mut version = false;
     let mut remaining_args = args;
     let mut positional_index = 0;
     let mut options_ended = false;
@@ -1049,6 +1052,10 @@ pub fn parse_struct_args(
         remaining_args = &remaining_args[1..];
         if (parse_options.help_triggers.contains(&next_arg)) && !options_ended {
             help = true;
+            continue;
+        }
+        if (parse_options.version_triggers.contains(&next_arg)) && !options_ended {
+            version = true;
             continue;
         }
 
@@ -1060,6 +1067,11 @@ pub fn parse_struct_args(
 
             if help {
                 return Err("Trailing arguments are not allowed after `help`.".to_string().into());
+            }
+            if version {
+                return Err("Trailing arguments are not allowed after `version`."
+                    .to_string()
+                    .into());
             }
 
             parse_options.parse(next_arg, &mut remaining_args)?;
@@ -1077,7 +1089,9 @@ pub fn parse_struct_args(
         options_ended |= parse_positionals.parse(&mut positional_index, next_arg)?;
     }
 
-    if help {
+    if version {
+        Err(EarlyExit { output: version_func(), status: Ok(()) })
+    } else if help {
         Err(EarlyExit { output: help_func(), status: Ok(()) })
     } else {
         Ok(())
@@ -1097,6 +1111,10 @@ pub struct ParseStructOptions<'a> {
 
     /// help triggers is a list of strings that trigger printing of help
     pub help_triggers: &'a [&'a str],
+
+    /// version triggers is a list of strings that trigger printing of the
+    /// crate name and version
+    pub version_triggers: &'a [&'a str],
 }
 
 impl ParseStructOptions<'_> {
@@ -1110,7 +1128,13 @@ impl ParseStructOptions<'_> {
             .arg_to_slot
             .iter()
             .find_map(|&(name, pos)| if name == arg { Some(pos) } else { None })
-            .ok_or_else(|| unrecognized_argument(arg, self.arg_to_slot, self.help_triggers))?;
+            .ok_or_else(|| {
+                unrecognized_argument(
+                    arg,
+                    self.arg_to_slot,
+                    self.help_triggers.iter().chain(self.version_triggers.iter()).copied(),
+                )
+            })?;
 
         match self.slots[pos] {
             ParseStructOption::Flag(ref mut b) => b.set_flag(arg),
@@ -1130,16 +1154,16 @@ impl ParseStructOptions<'_> {
     }
 }
 
-fn unrecognized_argument(
+fn unrecognized_argument<'a>(
     given: &str,
-    arg_to_slot: &[(&str, usize)],
-    extra_suggestions: &[&str],
+    arg_to_slot: &[(&'a str, usize)],
+    extra_suggestions: impl IntoIterator<Item = &'a str>,
 ) -> String {
     // get the list of available arguments
     let available = arg_to_slot
         .iter()
         .map(|(name, _pos)| *name)
-        .chain(extra_suggestions.iter().copied())
+        .chain(extra_suggestions)
         .collect::<Vec<&str>>();
 
     if available.is_empty() {

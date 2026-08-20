@@ -109,6 +109,49 @@ Options:
 }
 
 #[test]
+fn version_trigger_example() {
+    /// Height options
+    #[derive(FromArgs)]
+    struct Height {
+        /// how high to go
+        #[argh(option)]
+        _height: usize,
+    }
+
+    let version = format!("{} {}", env!("CARGO_PKG_NAME"), env!("CARGO_PKG_VERSION"));
+    match Height::from_args(&["test_arg_0"], &["--version"]) {
+        Ok(_) => panic!("version was parsed as args"),
+        Err(e) => {
+            assert_eq!(version, e.output);
+            e.status.expect("version returned an error");
+        }
+    }
+}
+
+#[test]
+fn version_trigger_custom_example() {
+    /// Height options
+    #[derive(FromArgs)]
+    #[argh(version_triggers("-v", "--version"))]
+    struct Height {
+        /// how high to go
+        #[argh(option)]
+        _height: usize,
+    }
+
+    let version = format!("{} {}", env!("CARGO_PKG_NAME"), env!("CARGO_PKG_VERSION"));
+    for trigger in &["-v", "--version"] {
+        match Height::from_args(&["test_arg_0"], &[trigger]) {
+            Ok(_) => panic!("version was parsed as args"),
+            Err(e) => {
+                assert_eq!(version, e.output);
+                e.status.expect("version returned an error");
+            }
+        }
+    }
+}
+
+#[test]
 fn nested_from_str_example() {
     #[derive(FromArgs)]
     /// Goofy thing.

@@ -1358,9 +1358,9 @@ impl MissingRequirements {
     }
 
     // If any missing options or subcommands were provided, returns an error string
-    // describing the missing args.
+    // describing the missing args, followed by the usage text.
     #[doc(hidden)]
-    pub fn err_on_any(&self) -> Result<(), String> {
+    pub fn err_on_any(&self, usage: &str) -> Result<(), String> {
         if self.options.is_empty() && self.subcommands.is_none() && self.positional_args.is_empty()
         {
             return Ok(());
@@ -1401,6 +1401,7 @@ impl MissingRequirements {
         }
 
         output.push('\n');
+        output.push_str(usage);
 
         Err(output)
     }

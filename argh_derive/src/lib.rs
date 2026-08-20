@@ -419,6 +419,8 @@ fn impl_from_args_struct_from_args<'a>(
 
             #( #init_fields )*
 
+            let __usage = #help;
+
             argh::parse_struct_args(
                 __cmd_name,
                 __args,
@@ -441,7 +443,7 @@ fn impl_from_args_struct_from_args<'a>(
                     last_is_greedy: #last_positional_is_greedy,
                 },
                 #parse_subcommands,
-                &|| #help,
+                &|| __usage.clone(),
                 &|| ::core::format_args!("{} {}", ::core::env!("CARGO_PKG_NAME"), ::core::env!("CARGO_PKG_VERSION")).to_string(),
             )?;
 
@@ -449,7 +451,7 @@ fn impl_from_args_struct_from_args<'a>(
             #(
                 #append_missing_requirements
             )*
-            #missing_requirements_ident.err_on_any()?;
+            #missing_requirements_ident.err_on_any(&__usage)?;
 
             ::core::result::Result::Ok(Self {
                 #( #unwrap_fields, )*
@@ -591,6 +593,8 @@ fn impl_from_args_struct_redact_arg_values<'a>(
         fn redact_arg_values(__cmd_name: &[&str], __args: &[&str]) -> std::result::Result<Vec<String>, argh::EarlyExit> {
             #( #init_fields )*
 
+            let __usage = #help;
+
             argh::parse_struct_args(
                 __cmd_name,
                 __args,
@@ -613,7 +617,7 @@ fn impl_from_args_struct_redact_arg_values<'a>(
                     last_is_greedy: #last_positional_is_greedy,
                 },
                 #redact_subcommands,
-                &|| #help,
+                &|| __usage.clone(),
                 &|| ::core::format_args!("{} {}", ::core::env!("CARGO_PKG_NAME"), ::core::env!("CARGO_PKG_VERSION")).to_string(),
             )?;
 
@@ -621,7 +625,7 @@ fn impl_from_args_struct_redact_arg_values<'a>(
             #(
                 #append_missing_requirements
             )*
-            #missing_requirements_ident.err_on_any()?;
+            #missing_requirements_ident.err_on_any(&__usage)?;
 
             let mut __redacted = vec![
                 if let Some(cmd_name) = __cmd_name.last() {

@@ -39,6 +39,36 @@ fn basic_example() {
 }
 
 #[test]
+#[cfg(feature = "help")]
+fn missing_required_argument_prints_usage() {
+    #[derive(FromArgs, Debug)]
+    /// Reach new heights.
+    struct GoUp {
+        /// how high to go
+        #[argh(option)]
+        _height: usize,
+    }
+
+    // A command that requires at least one argument, invoked with zero
+    // arguments, must fail with a non-zero status and print the usage.
+    let e = GoUp::from_args(&["cmdname"], &[]).expect_err("missing required option should fail");
+    assert!(e.status.is_err());
+    assert_eq!(
+        e.output,
+        r###"Required options not provided:
+    --height
+Usage: cmdname --height <height>
+
+Reach new heights.
+
+Options:
+  --height      how high to go
+  --help, help  display usage information
+"###,
+    );
+}
+
+#[test]
 fn generic_example() {
     use std::fmt::Display;
     use std::str::FromStr;
@@ -883,12 +913,32 @@ Options:
             r###"Required positional arguments not provided:
     a
     b
+Usage: cmd [--] <a> <b>
+
+Woot
+
+Positional Arguments:
+  a  fooey
+  b  fooey
+
+Options:
+  --help, help  display usage information
 "###,
         );
         assert_error::<LastRequired>(
             &["5"],
             r###"Required positional arguments not provided:
     b
+Usage: cmd [--] <a> <b>
+
+Woot
+
+Positional Arguments:
+  a  fooey
+  b  fooey
+
+Options:
+  --help, help  display usage information
 "###,
         );
     }
@@ -932,6 +982,16 @@ Options:
     a
 Required options not provided:
     --b
+Usage: cmd --b <b> [--] <a>
+
+Woot
+
+Positional Arguments:
+  a  fooey
+
+Options:
+  --b           fooey
+  --help, help  display usage information
 "###,
         );
     }
@@ -977,6 +1037,19 @@ Required options not provided:
             &["a", "a", "a"],
             r###"Required positional arguments not provided:
     a
+Usage: cmd <a> [<c...>] <command> [<args>]
+
+Woot
+
+Positional Arguments:
+  a  fooey
+  c  fooey
+
+Options:
+  --help, help  display usage information
+
+Commands:
+  a  Subcommand of positional::WithSubcommand.
 "###,
         );
 
@@ -1006,6 +1079,15 @@ Required options not provided:
             &[],
             r###"Required positional arguments not provided:
     a
+Usage: cmd [--] <a>
+
+Woot
+
+Positional Arguments:
+  a  fooey
+
+Options:
+  --help, help  display usage information
 "###,
         );
     }
@@ -1426,15 +1508,43 @@ Options:
         exit.status.unwrap_err();
         assert_eq!(
             exit.output,
-            concat!(
-                "Required options not provided:\n",
-                "    --scribble\n",
-                "One of the following subcommands must be present:\n",
-                "    help\n",
-                "    blow-up\n",
-                "    grind\n",
-                "    plugin\n",
-            ),
+            r###"Required options not provided:
+    --scribble
+One of the following subcommands must be present:
+    help
+    blow-up
+    grind
+    plugin
+Usage: program-name [-f] [--really-really-really-long-name-for-pat] -s <scribble> [-v] <command> [<args>]
+
+Destroy the contents of <file>.
+
+Options:
+  -f, --force                               force, ignore minor errors. This
+                                            description is so long that it wraps
+                                            to the next line.
+  --really-really-really-long-name-for-pat  documentation
+  -s, --scribble                            write <scribble> repeatedly
+  -v, --verbose                             say more. Defaults to
+                                            $BLAST_VERBOSE.
+  --help, help                              display usage information
+
+Commands:
+  blow-up  explosively separate
+  grind    make smaller by many small cuts
+  plugin   Example dynamic command
+
+Examples:
+  Scribble 'abc' and then run |grind|.
+  $ program-name -s 'abc' grind old.txt taxes.cp
+
+Notes:
+  Use `program-name help <command>` for details on [<args>] for a subcommand.
+
+Error codes:
+  2 The blade is too dull.
+  3 Out of fuel.
+"###,
         );
     }
 
@@ -1723,7 +1833,8 @@ fn redact_arg_values_positional_err() {
     assert_eq!(
         actual,
         argh::EarlyExit {
-            output: "Required positional arguments not provided:\n    speed\n".into(),
+            output: "Required positional arguments not provided:\n    speed\nUsage: program-name [--] <speed>\n\nShort description\n\nPositional Arguments:\n  speed  speed of cmd\n\nOptions:\n  --help, help  display usage information\n"
+                .into(),
             status: Err(()),
         }
     );

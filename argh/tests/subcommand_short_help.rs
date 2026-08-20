@@ -44,8 +44,8 @@ fn test_subcommand_short_help() {
     assert!(output.contains("two "), "Help output should contain 'two '");
     assert!(!output.contains("two  t"), "Help output should NOT contain 'two  t'");
 
-    let expected_part = "  one  o            First subcommand.
-  two               Second subcommand.";
+    let expected_part = "  one  o  First subcommand.
+  two     Second subcommand.";
     assert!(
         output.contains(expected_part),
         "Help output did not match expected subcommand list formatting. Got:

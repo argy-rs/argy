@@ -9,12 +9,19 @@ use {
         parse_attrs::{Description, FieldKind, TypeAttrs},
         Optionality, StructField,
     },
-    argh_shared::INDENT,
+    argh_shared::{DESCRIPTION_PADDING, INDENT},
     proc_macro2::{Span, TokenStream},
     quote::quote,
 };
 
 const SECTION_SEPARATOR: &str = "\n\n";
+
+/// The column at which a description should start so that a name of
+/// `max_name_len` characters is followed by a [`DESCRIPTION_PADDING`]-space
+/// separator, matching the longest name in the group.
+fn indent_for(max_name_len: usize) -> usize {
+    max_name_len + INDENT.chars().count() + DESCRIPTION_PADDING
+}
 
 /// Returns a `TokenStream` generating a `String` help message.
 ///
@@ -90,21 +97,36 @@ pub(crate) fn help(
     if has_positional {
         format_lit.push_str(SECTION_SEPARATOR);
         format_lit.push_str("Positional Arguments:");
+        let positional_indent = indent_for(
+            positional.clone().map(|p| p.positional_arg_name().chars().count()).max().unwrap_or(0),
+        );
         for arg in positional {
-            positional_description(&mut format_lit, arg);
+            positional_description(&mut format_lit, arg, positional_indent);
         }
     }
 
     format_lit.push_str(SECTION_SEPARATOR);
     format_lit.push_str("Options:");
+    let option_indent = indent_for(
+        options
+            .clone()
+            .map(|o| {
+                let long = o.long_name.as_ref().expect("missing long name for option");
+                option_name(o.attrs.short.as_ref().map(|s| s.value()), long).chars().count()
+            })
+            .chain(std::iter::once(help_triggers.join(", ").chars().count()))
+            .max()
+            .unwrap_or(0),
+    );
     for option in options {
-        option_description(errors, &mut format_lit, option);
+        option_description(errors, &mut format_lit, option, option_indent);
     }
     option_description_format(
         &mut format_lit,
         None,
         &help_triggers.join(", "),
         "display usage information",
+        option_indent,
     );
 
     let subcommand_calculation;
@@ -253,39 +275,52 @@ Add a doc comment or an `#[argh(description = \"...\")]` attribute.",
 
 /// Describes a positional argument like this:
 ///  hello       positional argument description
-fn positional_description(out: &mut String, field: &StructField<'_>) {
+fn positional_description(out: &mut String, field: &StructField<'_>, description_indent: usize) {
     let field_name = field.positional_arg_name();
 
     let mut description = String::from("");
     if let Some(desc) = &field.attrs.description {
         description = desc.content.value().trim().to_owned();
     }
-    positional_description_format(out, &field_name, &description)
+    positional_description_format(out, &field_name, &description, description_indent)
 }
 
-fn positional_description_format(out: &mut String, name: &str, description: &str) {
+fn positional_description_format(
+    out: &mut String,
+    name: &str,
+    description: &str,
+    description_indent: usize,
+) {
     let info = argh_shared::CommandInfo { name, description, short: &'\0' };
-    argh_shared::write_description(out, &info);
+    argh_shared::write_description(out, &info, description_indent);
 }
 
 /// Describes an option like this:
 ///  -f, --force       force, ignore minor errors. This description
 ///                    is so long that it wraps to the next line.
-fn option_description(errors: &Errors, out: &mut String, field: &StructField<'_>) {
+fn option_description(
+    errors: &Errors,
+    out: &mut String,
+    field: &StructField<'_>,
+    description_indent: usize,
+) {
     let short = field.attrs.short.as_ref().map(|s| s.value());
     let long_with_leading_dashes = field.long_name.as_ref().expect("missing long name for option");
     let description =
         require_description(errors, field.name.span(), &field.attrs.description, "field");
 
-    option_description_format(out, short, long_with_leading_dashes, &description)
+    option_description_format(
+        out,
+        short,
+        long_with_leading_dashes,
+        &description,
+        description_indent,
+    )
 }
 
-fn option_description_format(
-    out: &mut String,
-    short: Option<char>,
-    long_with_leading_dashes: &str,
-    description: &str,
-) {
+/// Builds the displayed name for an option, e.g. `-f, --force` (short first)
+/// or just `--force` when no short form exists.
+fn option_name(short: Option<char>, long_with_leading_dashes: &str) -> String {
     let mut name = String::new();
     if let Some(short) = short {
         name.push('-');
@@ -293,7 +328,18 @@ fn option_description_format(
         name.push_str(", ");
     }
     name.push_str(long_with_leading_dashes);
+    name
+}
+
+fn option_description_format(
+    out: &mut String,
+    short: Option<char>,
+    long_with_leading_dashes: &str,
+    description: &str,
+    description_indent: usize,
+) {
+    let name = option_name(short, long_with_leading_dashes);
 
     let info = argh_shared::CommandInfo { name: &name, description, short: &'\0' };
-    argh_shared::write_description(out, &info);
+    argh_shared::write_description(out, &info, description_indent);
 }

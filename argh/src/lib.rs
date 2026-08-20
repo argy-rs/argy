@@ -508,11 +508,11 @@ pub trait FromArgs: Sized {
     /// Command to manage a classroom.
     ///
     /// Options:
-    ///   --help, help      display usage information
+    ///   --help, help  display usage information
     ///
     /// Commands:
-    ///   list              list all the classes.
-    ///   add               add students to a class.
+    ///   list  list all the classes.
+    ///   add   add students to a class.
     /// "#.to_string(),
     ///        status: Ok(()),
     ///     },
@@ -531,8 +531,8 @@ pub trait FromArgs: Sized {
     /// list all the classes.
     ///
     /// Options:
-    ///   --teacher-name    list classes for only this teacher.
-    ///   --help, help      display usage information
+    ///   --teacher-name  list classes for only this teacher.
+    ///   --help, help    display usage information
     /// "#.to_string(),
     ///        status: Ok(()),
     ///     },
@@ -674,11 +674,11 @@ pub trait FromArgs: Sized {
     /// Command to manage a classroom.
     ///
     /// Options:
-    ///   --help, help      display usage information
+    ///   --help, help  display usage information
     ///
     /// Commands:
-    ///   list              list all the classes.
-    ///   add               add students to a class.
+    ///   list  list all the classes.
+    ///   add   add students to a class.
     /// "#.to_string(),
     ///         status: Ok(()),
     ///     }),
@@ -1315,8 +1315,10 @@ fn prepend_help<'a>(args: &[&'a str]) -> Vec<&'a str> {
 #[doc(hidden)]
 pub fn print_subcommands<'a>(commands: impl Iterator<Item = &'a CommandInfo>) -> String {
     let mut out = String::new();
+    let commands: Vec<_> = commands.collect();
+    let description_indent = argh_shared::description_indent(commands.iter().copied());
     for cmd in commands {
-        argh_shared::write_description(&mut out, cmd);
+        argh_shared::write_description(&mut out, cmd, description_indent);
     }
     out
 }

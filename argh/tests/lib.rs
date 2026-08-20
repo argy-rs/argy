@@ -370,9 +370,9 @@ fn multiline_doc_comment_description() {
 Short description
 
 Options:
-  --s               a switch with a description that is spread across a number
-                    of lines of comments.
-  --help, help      display usage information
+  --s           a switch with a description that is spread across a number of
+                lines of comments.
+  --help, help  display usage information
 "###,
     );
 }
@@ -396,8 +396,8 @@ fn escaped_doc_comment_description() {
 A \description: !"#$%&'()*+,-./:;<=>?@[\]^_`{|}~\
 
 Options:
-  --s               a \description: !"#$%&'()*+,-./:;<=>?@[\]^_`{|}~\
-  --help, help      display usage information
+  --s           a \description: !"#$%&'()*+,-./:;<=>?@[\]^_`{|}~\
+  --help, help  display usage information
 "###,
     );
 }
@@ -511,6 +511,50 @@ fn assert_error<T: FromArgs + Debug>(args: &[&str], err_msg: &str) {
     e.status.expect_err("error had a positive status");
 }
 
+#[test]
+#[cfg(feature = "help")]
+fn help_description_column_varies_with_longest_name() {
+    // With only short flag names, descriptions start well before the fixed
+    // 20-column width of the previous implementation.
+    #[derive(FromArgs)]
+    /// Short options.
+    struct ShortOpts {
+        #[argh(option)]
+        /// a value
+        _a: usize,
+    }
+    assert_help_string::<ShortOpts>(
+        r###"Usage: test_arg_0 --a <a>
+
+Short options.
+
+Options:
+  --a           a value
+  --help, help  display usage information
+"###,
+    );
+
+    // With a longer option name, the description column widens to match,
+    // proving the column is derived from the longest name in the group.
+    #[derive(FromArgs)]
+    /// Long options.
+    struct LongOpts {
+        #[argh(option)]
+        /// a value
+        _a_very_long_option_name: usize,
+    }
+    assert_help_string::<LongOpts>(
+        r###"Usage: test_arg_0 --a-very-long-option-name <a-very-long-option-name>
+
+Long options.
+
+Options:
+  --a-very-long-option-name  a value
+  --help, help               display usage information
+"###,
+    );
+}
+
 mod options {
     use super::*;
 
@@ -549,8 +593,8 @@ mod options {
 Woot
 
 Options:
-  -n, --n           fooey
-  --help, help      display usage information
+  -n, --n       fooey
+  --help, help  display usage information
 "###,
         );
     }
@@ -572,8 +616,8 @@ Options:
 Woot
 
 Options:
-  --option-name     fooey
-  --help, help      display usage information
+  --option-name  fooey
+  --help, help   display usage information
 "###,
         );
     }
@@ -653,9 +697,9 @@ Options:
 Test choices
 
 Options:
-  --choice1         first choice with a default
-  --choice2         second choice.
-  --help, help      display usage information
+  --choice1     first choice with a default
+  --choice2     second choice.
+  --help, help  display usage information
 "###,
         );
     }
@@ -690,11 +734,11 @@ mod positional {
 Woot
 
 Positional Arguments:
-  a                 fooey
-  b                 fooey
+  a  fooey
+  b  fooey
 
 Options:
-  --help, help      display usage information
+  --help, help  display usage information
 "###,
         );
     }
@@ -774,12 +818,12 @@ Options:
 Woot
 
 Positional Arguments:
-  a                 fooey
+  a  fooey
 
 Options:
-  --b               woo
-  --c               stuff
-  --help, help      display usage information
+  --b           woo
+  --c           stuff
+  --help, help  display usage information
 "###,
         );
     }
@@ -1193,10 +1237,10 @@ mod fuchsia_commandline_tools_rubric {
 A type for testing `--help`/`help`
 
 Options:
-  --help, help      display usage information
+  --help, help  display usage information
 
 Commands:
-  first             First subcommmand for testing `help`.
+  first  First subcommmand for testing `help`.
 "###;
 
     #[cfg(feature = "help")]
@@ -1205,10 +1249,10 @@ Commands:
 First subcommmand for testing `help`.
 
 Options:
-  --help, help      display usage information
+  --help, help  display usage information
 
 Commands:
-  second            Second subcommand for testing `help`.
+  second  Second subcommand for testing `help`.
 "###;
 
     #[cfg(feature = "help")]
@@ -1217,7 +1261,7 @@ Commands:
 Second subcommand for testing `help`.
 
 Options:
-  --help, help      display usage information
+  --help, help  display usage information
 "###;
 
     #[test]
@@ -1403,18 +1447,19 @@ Options:
 Destroy the contents of <file>.
 
 Options:
-  -f, --force       force, ignore minor errors. This description is so long that
-                    it wraps to the next line.
-  --really-really-really-long-name-for-pat
-                    documentation
-  -s, --scribble    write <scribble> repeatedly
-  -v, --verbose     say more. Defaults to $BLAST_VERBOSE.
-  --help, help      display usage information
+  -f, --force                               force, ignore minor errors. This
+                                            description is so long that it wraps
+                                            to the next line.
+  --really-really-really-long-name-for-pat  documentation
+  -s, --scribble                            write <scribble> repeatedly
+  -v, --verbose                             say more. Defaults to
+                                            $BLAST_VERBOSE.
+  --help, help                              display usage information
 
 Commands:
-  blow-up           explosively separate
-  grind             make smaller by many small cuts
-  plugin            Example dynamic command
+  blow-up  explosively separate
+  grind    make smaller by many small cuts
+  plugin   Example dynamic command
 
 Examples:
   Scribble 'abc' and then run |grind|.
@@ -1450,7 +1495,7 @@ Positional Arguments:
   name
 
 Options:
-  --help, help      display usage information
+  --help, help  display usage information
 "###,
         );
     }
@@ -1478,10 +1523,10 @@ Options:
 Short description
 
 Positional Arguments:
-  two               this one is real
+  two  this one is real
 
 Options:
-  --help, help      display usage information
+  --help, help  display usage information
 "###,
         );
     }
@@ -1846,8 +1891,8 @@ fn redact_arg_values_produces_help() {
 Woot
 
 Options:
-  -n, --n           fooey
-  --help, help      display usage information
+  -n, --n       fooey
+  --help, help  display usage information
 "###
             .to_owned(),
             status: Ok(()),

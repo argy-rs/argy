@@ -284,6 +284,8 @@ pub struct TypeAttrs {
     pub error_codes: Vec<(syn::LitInt, syn::LitStr)>,
     /// Arguments that trigger printing of the help message
     pub help_triggers: Option<Vec<syn::LitStr>>,
+    /// Arguments that trigger printing of the crate name and version
+    pub version_triggers: Option<Vec<syn::LitStr>>,
     pub usage: Option<syn::LitStr>,
 }
 
@@ -339,6 +341,10 @@ impl TypeAttrs {
                     if let Some(m) = errors.expect_meta_list(&meta) {
                         Self::parse_help_triggers(m, errors, &mut this);
                     }
+                } else if name.is_ident("version_triggers") {
+                    if let Some(m) = errors.expect_meta_list(&meta) {
+                        Self::parse_version_triggers(m, errors, &mut this);
+                    }
                 } else if name.is_ident("usage") {
                     if let Some(m) = errors.expect_meta_name_value(&meta) {
                         this.parse_attr_usage(errors, m);
@@ -349,7 +355,8 @@ impl TypeAttrs {
                         concat!(
                             "Invalid type-level `argh` attribute\n",
                             "Expected one of: `description`, `error_code`, `example`, `name`, ",
-                            "`note`, `short`, `subcommand`, `usage`",
+                            "`note`, `short`, `subcommand`, `usage`, `help_triggers`, ",
+                            "`version_triggers`",
                         ),
                     );
                 }
@@ -456,6 +463,24 @@ impl TypeAttrs {
                 }
 
                 this.help_triggers = Some(triggers);
+            }
+            Err(err) => errors.push(err),
+        }
+    }
+
+    // get the list of arguments that trigger printing of the crate name and version as a vector of strings
+    fn parse_version_triggers(m: &syn::MetaList, errors: &Errors, this: &mut TypeAttrs) {
+        let parser = Punctuated::<syn::Expr, syn::Token![,]>::parse_terminated;
+        match parser.parse(m.tokens.clone().into()) {
+            Ok(args) => {
+                let mut triggers = Vec::new();
+                for arg in args {
+                    if let syn::Expr::Lit(syn::ExprLit { lit: syn::Lit::Str(lit_str), .. }) = arg {
+                        triggers.push(lit_str);
+                    }
+                }
+
+                this.version_triggers = Some(triggers);
             }
             Err(err) => errors.push(err),
         }
@@ -713,6 +738,7 @@ pub fn check_enum_type_attrs(errors: &Errors, type_attrs: &TypeAttrs, type_span:
         notes,
         error_codes,
         help_triggers,
+        version_triggers,
         usage,
     } = type_attrs;
 
@@ -750,6 +776,11 @@ pub fn check_enum_type_attrs(errors: &Errors, type_attrs: &TypeAttrs, type_span:
         err_unused_enum_attr(errors, &err_code.0);
     }
     if let Some(triggers) = help_triggers {
+        if let Some(trigger) = triggers.first() {
+            err_unused_enum_attr(errors, trigger);
+        }
+    }
+    if let Some(triggers) = version_triggers {
         if let Some(trigger) = triggers.first() {
             err_unused_enum_attr(errors, trigger);
         }

@@ -401,6 +401,7 @@ fn impl_from_args_struct_from_args<'a>(
     };
 
     let help_triggers = get_help_triggers(type_attrs);
+    let version_triggers = get_version_triggers(type_attrs);
 
     let help = if cfg!(feature = "help") {
         // Identifier referring to a value containing the name of the current command as an `&[&str]`.
@@ -425,6 +426,7 @@ fn impl_from_args_struct_from_args<'a>(
                     arg_to_slot: &[ #( #flag_str_to_output_table_map ,)* ],
                     slots: &mut [ #( #flag_output_table, )* ],
                     help_triggers: &[ #( #help_triggers ),* ],
+                    version_triggers: &[ #( #version_triggers ),* ],
                 },
                 argh::ParseStructPositionals {
                     positionals: &mut [
@@ -440,6 +442,7 @@ fn impl_from_args_struct_from_args<'a>(
                 },
                 #parse_subcommands,
                 &|| #help,
+                &|| ::core::format_args!("{} {}", ::core::env!("CARGO_PKG_NAME"), ::core::env!("CARGO_PKG_VERSION")).to_string(),
             )?;
 
             let mut #missing_requirements_ident = argh::MissingRequirements::default();
@@ -478,6 +481,29 @@ fn get_help_triggers(type_attrs: &TypeAttrs) -> Vec<String> {
         },
     );
     help_triggers
+}
+
+/// get version triggers vector from type_attrs.version_triggers as a [`Vec<String>`]
+///
+/// Defaults to vec!["--version"] if type_attrs.version_triggers is None
+fn get_version_triggers(type_attrs: &TypeAttrs) -> Vec<String> {
+    let version_triggers = type_attrs.version_triggers.as_ref().map_or_else(
+        || vec!["--version".to_owned()],
+        |s| {
+            s.iter()
+                .filter_map(|s| {
+                    let trigger = s.value();
+                    let trigger_trimmed = trigger.trim().to_owned();
+                    if trigger_trimmed.is_empty() {
+                        None
+                    } else {
+                        Some(trigger_trimmed)
+                    }
+                })
+                .collect::<Vec<_>>()
+        },
+    );
+    version_triggers
 }
 
 fn impl_from_args_struct_redact_arg_values<'a>(
@@ -551,6 +577,7 @@ fn impl_from_args_struct_redact_arg_values<'a>(
     };
 
     let help_triggers = get_help_triggers(type_attrs);
+    let version_triggers = get_version_triggers(type_attrs);
 
     let help = if cfg!(feature = "help") {
         // Identifier referring to a value containing the name of the current command as an `&[&str]`.
@@ -571,6 +598,7 @@ fn impl_from_args_struct_redact_arg_values<'a>(
                     arg_to_slot: &[ #( #flag_str_to_output_table_map ,)* ],
                     slots: &mut [ #( #flag_output_table, )* ],
                     help_triggers: &[ #( #help_triggers ),* ],
+                    version_triggers: &[ #( #version_triggers ),* ],
                 },
                 argh::ParseStructPositionals {
                     positionals: &mut [
@@ -586,6 +614,7 @@ fn impl_from_args_struct_redact_arg_values<'a>(
                 },
                 #redact_subcommands,
                 &|| #help,
+                &|| ::core::format_args!("{} {}", ::core::env!("CARGO_PKG_NAME"), ::core::env!("CARGO_PKG_VERSION")).to_string(),
             )?;
 
             let mut #missing_requirements_ident = argh::MissingRequirements::default();

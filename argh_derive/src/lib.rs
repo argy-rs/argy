@@ -1051,45 +1051,59 @@ fn append_missing_requirements<'a>(
     fields: &'a [StructField<'a>],
 ) -> impl Iterator<Item = TokenStream> + 'a {
     let mri = mri.clone();
-    fields.iter().filter(|f| f.optionality.is_required()).map(move |field| {
-        let field_name = field.name;
-        match field.kind {
-            FieldKind::Switch => unreachable!("switches are always optional"),
-            FieldKind::Positional => {
-                let name = field.positional_arg_name();
-                quote! {
-                    if #field_name.slot.is_none() {
-                        #mri.missing_positional_arg(#name)
+    fields
+        .iter()
+        .filter(|f| {
+            f.optionality.is_required()
+                || (f.kind == FieldKind::Positional && f.attrs.greedy.is_some() && f.attrs.required)
+        })
+        .map(move |field| {
+            let field_name = field.name;
+            match field.kind {
+                FieldKind::Switch => unreachable!("switches are always optional"),
+                FieldKind::Positional => {
+                    let name = field.positional_arg_name();
+                    if field.attrs.greedy.is_some() && field.attrs.required {
+                        quote! {
+                            if #field_name.slot.is_empty() {
+                                #mri.missing_positional_arg(#name)
+                            }
+                        }
+                    } else {
+                        quote! {
+                            if #field_name.slot.is_none() {
+                                #mri.missing_positional_arg(#name)
+                            }
+                        }
+                    }
+                }
+                FieldKind::Option => {
+                    let name = field.long_name.as_ref().expect("options always have a long name");
+                    quote! {
+                        if #field_name.slot.is_none() {
+                            #mri.missing_option(#name)
+                        }
+                    }
+                }
+                FieldKind::SubCommand => {
+                    let ty = field.ty_without_wrapper;
+                    quote! {
+                        if #field_name.is_none() {
+                            #mri.missing_subcommands(
+                                <#ty as argh::SubCommands>::COMMANDS
+                                    .iter()
+                                    .cloned()
+                                    .chain(
+                                        <#ty as argh::SubCommands>::dynamic_commands()
+                                            .iter()
+                                            .copied()
+                                    ),
+                            )
+                        }
                     }
                 }
             }
-            FieldKind::Option => {
-                let name = field.long_name.as_ref().expect("options always have a long name");
-                quote! {
-                    if #field_name.slot.is_none() {
-                        #mri.missing_option(#name)
-                    }
-                }
-            }
-            FieldKind::SubCommand => {
-                let ty = field.ty_without_wrapper;
-                quote! {
-                    if #field_name.is_none() {
-                        #mri.missing_subcommands(
-                            <#ty as argh::SubCommands>::COMMANDS
-                                .iter()
-                                .cloned()
-                                .chain(
-                                    <#ty as argh::SubCommands>::dynamic_commands()
-                                        .iter()
-                                        .copied()
-                                ),
-                        )
-                    }
-                }
-            }
-        }
-    })
+        })
 }
 
 /// Require that a type can be a `switch`.

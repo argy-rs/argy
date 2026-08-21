@@ -235,7 +235,9 @@ fn lits_section(out: &mut String, heading: &str, lits: &[syn::LitStr]) {
 
 /// Add positional arguments like `[<foo>...]` to a help format string.
 fn positional_usage(out: &mut String, field: &StructField<'_>) {
-    if !field.optionality.is_required() {
+    let required =
+        field.optionality.is_required() || (field.attrs.greedy.is_some() && field.attrs.required);
+    if !required {
         out.push('[');
     }
     if field.attrs.greedy.is_none() {
@@ -249,7 +251,7 @@ fn positional_usage(out: &mut String, field: &StructField<'_>) {
     if field.attrs.greedy.is_none() {
         out.push('>');
     }
-    if !field.optionality.is_required() {
+    if !required {
         out.push(']');
     }
 }

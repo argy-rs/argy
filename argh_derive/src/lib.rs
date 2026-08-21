@@ -367,6 +367,7 @@ fn impl_from_args_struct_from_args<'a>(
     });
 
     let flag_str_to_output_table_map = flag_str_to_output_table_map_entries(fields);
+    let global_options = global_options_entries(fields);
 
     let mut subcommands_iter =
         fields.iter().filter(|field| field.kind == FieldKind::SubCommand).fuse();
@@ -429,6 +430,7 @@ fn impl_from_args_struct_from_args<'a>(
                     slots: &mut [ #( #flag_output_table, )* ],
                     help_triggers: &[ #( #help_triggers ),* ],
                     version_triggers: &[ #( #version_triggers ),* ],
+                    global_options: &[ #( #global_options ),* ],
                 },
                 argh::ParseStructPositionals {
                     positionals: &mut [
@@ -539,6 +541,7 @@ fn impl_from_args_struct_redact_arg_values<'a>(
     });
 
     let flag_str_to_output_table_map = flag_str_to_output_table_map_entries(fields);
+    let global_options = global_options_entries(fields);
 
     let mut subcommands_iter =
         fields.iter().filter(|field| field.kind == FieldKind::SubCommand).fuse();
@@ -603,6 +606,7 @@ fn impl_from_args_struct_redact_arg_values<'a>(
                     slots: &mut [ #( #flag_output_table, )* ],
                     help_triggers: &[ #( #help_triggers ),* ],
                     version_triggers: &[ #( #version_triggers ),* ],
+                    global_options: &[ #( #global_options ),* ],
                 },
                 argh::ParseStructPositionals {
                     positionals: &mut [
@@ -966,6 +970,29 @@ fn flag_str_to_output_table_map_entries<'a>(fields: &'a [StructField<'a>]) -> Ve
         }
     }
     flag_str_to_output_table_map
+}
+
+/// The long, short, and alias forms of every option/switch declared as
+/// `global`, used to recognize global options after a subcommand.
+fn global_options_entries(fields: &[StructField<'_>]) -> Vec<TokenStream> {
+    let mut entries = vec![];
+    for field in fields {
+        if !field.attrs.global {
+            continue;
+        }
+        if let Some(long_name) = &field.long_name {
+            entries.push(quote! { #long_name });
+        }
+        if let Some(short) = &field.attrs.short {
+            let short = format!("-{}", short.value());
+            entries.push(quote! { #short });
+        }
+        for alias in &field.attrs.aliases {
+            let alias = format!("--{}", alias.value());
+            entries.push(quote! { #alias });
+        }
+    }
+    entries
 }
 
 /// For each non-optional field, add an entry to the `argh::MissingRequirements`.

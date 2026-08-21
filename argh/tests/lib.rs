@@ -134,6 +134,128 @@ fn subcommand_alias() {
 }
 
 #[test]
+fn global_switch_accepted_before_and_after_subcommand() {
+    #[derive(FromArgs, PartialEq, Debug)]
+    /// Top-level command.
+    struct TopLevel {
+        /// whether to merge
+        #[argh(switch, global)]
+        merge: bool,
+
+        /// command to execute
+        #[argh(subcommand)]
+        nested: MySubCommandEnum,
+    }
+
+    #[derive(FromArgs, PartialEq, Debug)]
+    #[argh(subcommand)]
+    enum MySubCommandEnum {
+        Atuin(Atuin),
+    }
+
+    #[derive(FromArgs, PartialEq, Debug)]
+    /// Import into atuin.
+    #[argh(subcommand, name = "atuin")]
+    struct Atuin {
+        #[argh(positional)]
+        name: String,
+    }
+
+    // Global switch before the subcommand.
+    let before = TopLevel::from_args(&["cmd"], &["--merge", "atuin", "x"]).expect("before");
+    assert_eq!(
+        before,
+        TopLevel { merge: true, nested: MySubCommandEnum::Atuin(Atuin { name: "x".into() }) }
+    );
+
+    // Global switch after the subcommand, before the positional.
+    let after = TopLevel::from_args(&["cmd"], &["atuin", "--merge", "x"]).expect("after");
+    assert_eq!(
+        after,
+        TopLevel { merge: true, nested: MySubCommandEnum::Atuin(Atuin { name: "x".into() }) }
+    );
+
+    // Global switch after the subcommand, after the positional.
+    let after_pos = TopLevel::from_args(&["cmd"], &["atuin", "x", "--merge"]).expect("after_pos");
+    assert_eq!(
+        after_pos,
+        TopLevel { merge: true, nested: MySubCommandEnum::Atuin(Atuin { name: "x".into() }) }
+    );
+
+    // Global switch omitted entirely.
+    let none = TopLevel::from_args(&["cmd"], &["atuin", "x"]).expect("none");
+    assert_eq!(
+        none,
+        TopLevel { merge: false, nested: MySubCommandEnum::Atuin(Atuin { name: "x".into() }) }
+    );
+}
+
+#[test]
+fn global_value_option_accepted_after_subcommand() {
+    #[derive(FromArgs, PartialEq, Debug)]
+    /// Top-level command.
+    struct TopLevel {
+        /// verbosity level
+        #[argh(option, global)]
+        verbose: Option<u32>,
+
+        /// command to execute
+        #[argh(subcommand)]
+        nested: MySubCommandEnum,
+    }
+
+    #[derive(FromArgs, PartialEq, Debug)]
+    #[argh(subcommand)]
+    enum MySubCommandEnum {
+        Atuin(Atuin),
+    }
+
+    #[derive(FromArgs, PartialEq, Debug)]
+    /// Import into atuin.
+    #[argh(subcommand, name = "atuin")]
+    struct Atuin {}
+
+    // Global value option before the subcommand.
+    let before = TopLevel::from_args(&["cmd"], &["--verbose", "3", "atuin"]).expect("before");
+    assert_eq!(before, TopLevel { verbose: Some(3), nested: MySubCommandEnum::Atuin(Atuin {}) });
+
+    // Global value option after the subcommand.
+    let after = TopLevel::from_args(&["cmd"], &["atuin", "--verbose", "4"]).expect("after");
+    assert_eq!(after, TopLevel { verbose: Some(4), nested: MySubCommandEnum::Atuin(Atuin {}) });
+}
+
+#[test]
+fn non_global_option_rejected_after_subcommand() {
+    #[derive(FromArgs, PartialEq, Debug)]
+    /// Top-level command.
+    struct TopLevel {
+        /// a non-global switch
+        #[argh(switch)]
+        local: bool,
+
+        /// command to execute
+        #[argh(subcommand)]
+        nested: MySubCommandEnum,
+    }
+
+    #[derive(FromArgs, PartialEq, Debug)]
+    #[argh(subcommand)]
+    enum MySubCommandEnum {
+        Atuin(Atuin),
+    }
+
+    #[derive(FromArgs, PartialEq, Debug)]
+    /// Import into atuin.
+    #[argh(subcommand, name = "atuin")]
+    struct Atuin {}
+
+    // A non-global option is still rejected after a subcommand.
+    let e = TopLevel::from_args(&["cmd"], &["atuin", "--local"]).expect_err("should reject");
+    assert!(e.status.is_err());
+    assert!(e.output.contains("--local"), "unexpected error output: {:?}", e.output);
+}
+
+#[test]
 #[cfg(feature = "help")]
 fn missing_required_argument_prints_usage() {
     #[derive(FromArgs, Debug)]

@@ -2,7 +2,7 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
-use syn::{parse::Parser, punctuated::Punctuated};
+use syn::{parse::Parser, punctuated::Punctuated, spanned::Spanned};
 
 use {
     crate::errors::Errors,
@@ -23,6 +23,9 @@ pub struct FieldAttrs {
     pub greedy: Option<syn::Path>,
     pub hidden_help: bool,
     pub usage: bool,
+    /// Whether the option or switch is global, i.e. also accepted after a
+    /// subcommand is parsed. Only valid on `#[argh(option)]` and `#[argh(switch)]`.
+    pub global: bool,
     /// Alternative long names for an option or switch.
     pub aliases: Vec<syn::LitStr>,
 }
@@ -68,6 +71,7 @@ pub struct Description {
 impl FieldAttrs {
     pub fn parse(errors: &Errors, field: &syn::Field) -> Self {
         let mut this = Self::default();
+        let mut global_span = None;
 
         for attr in &field.attrs {
             if is_doc_attr(attr) {
@@ -131,6 +135,9 @@ impl FieldAttrs {
                     );
                 } else if name.is_ident("greedy") {
                     this.greedy = Some(name.clone());
+                } else if name.is_ident("global") {
+                    this.global = true;
+                    global_span = Some(meta.span());
                 } else if name.is_ident("hidden_help") {
                     this.hidden_help = true;
                 } else if name.is_ident("usage") {
@@ -140,8 +147,8 @@ impl FieldAttrs {
                         &meta,
                         concat!(
                             "Invalid field-level `argh` attribute\n",
-                            "Expected one of: `alias`, `arg_name`, `default`, `description`, `from_str_fn`, `greedy`, ",
-                            "`long`, `option`, `short`, `subcommand`, `switch`, `hidden_help`, `usage`",
+                            "Expected one of: `alias`, `arg_name`, `default`, `description`, `from_str_fn`, `global`, ",
+                            "`greedy`, `long`, `option`, `short`, `subcommand`, `switch`, `hidden_help`, `usage`",
                         ),
                     );
                 }
@@ -186,6 +193,17 @@ impl FieldAttrs {
                     fields",
             ),
             _ => {}
+        }
+
+        if this.global {
+            match this.field_type.as_ref().map(|f| f.kind) {
+                Some(FieldKind::Option) | Some(FieldKind::Switch) => {}
+                _ => {
+                    if let Some(span) = global_span {
+                        errors.err_span(span, "`global` may only be specified on `#[argh(option)]` or `#[argh(switch)]` fields");
+                    }
+                }
+            }
         }
 
         if let Some(d) = &this.description {

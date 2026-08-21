@@ -1122,6 +1122,14 @@ pub struct ParseStructOptions<'a> {
     /// The storage for argument output data.
     pub slots: &'a mut [ParseStructOption<'a>],
 
+    /// Parallel to `slots`, records which option/switch slots have been seen
+    /// while parsing, so mutually exclusive options can be rejected.
+    pub seen: &'a mut [bool],
+
+    /// Pairs of mutually exclusive options, expressed as slot indices plus
+    /// their canonical `--long` display names: `(pos_a, name_a, pos_b, name_b)`.
+    pub conflicts: &'static [(usize, &'static str, usize, &'static str)],
+
     /// help triggers is a list of strings that trigger printing of help
     pub help_triggers: &'a [&'a str],
 
@@ -1136,6 +1144,25 @@ pub struct ParseStructOptions<'a> {
 }
 
 impl ParseStructOptions<'_> {
+    /// Reject a slot if a mutually exclusive option has already been seen, then
+    /// mark the slot as seen. `pos` is the slot index of the option being set.
+    fn check_conflict(&mut self, pos: usize) -> Result<(), String> {
+        for &(pa, name_a, pb, name_b) in self.conflicts {
+            if pos == pa && self.seen[pb] {
+                return Err(
+                    ["The argument '", name_b, "' cannot be used with '", name_a, "'.\n"].concat()
+                );
+            }
+            if pos == pb && self.seen[pa] {
+                return Err(
+                    ["The argument '", name_a, "' cannot be used with '", name_b, "'.\n"].concat()
+                );
+            }
+        }
+        self.seen[pos] = true;
+        Ok(())
+    }
+
     /// Parse a commandline option.
     ///
     /// `arg`: the current option argument being parsed (e.g. `--foo`).
@@ -1163,6 +1190,8 @@ impl ParseStructOptions<'_> {
                 ));
             }
         };
+
+        self.check_conflict(pos)?;
 
         match self.slots[pos] {
             ParseStructOption::Flag(ref mut b) => b.set_flag(arg),
@@ -1232,6 +1261,8 @@ impl ParseStructOptions<'_> {
                         self.help_triggers.iter().chain(self.version_triggers.iter()).copied(),
                     )
                 })?;
+
+            self.check_conflict(pos)?;
 
             match &mut self.slots[pos] {
                 ParseStructOption::Flag(b) => b.set_flag(&short),

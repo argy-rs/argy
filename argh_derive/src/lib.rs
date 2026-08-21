@@ -368,6 +368,11 @@ fn impl_from_args_struct_from_args<'a>(
 
     let flag_str_to_output_table_map = flag_str_to_output_table_map_entries(fields);
     let global_options = global_options_entries(fields);
+    let conflicts = conflicts_entries_tokens(fields, errors);
+    let num_option_slots = fields
+        .iter()
+        .filter(|field| matches!(field.kind, FieldKind::Option | FieldKind::Switch))
+        .count();
 
     let mut subcommands_iter =
         fields.iter().filter(|field| field.kind == FieldKind::SubCommand).fuse();
@@ -422,6 +427,8 @@ fn impl_from_args_struct_from_args<'a>(
 
             #( #init_fields )*
 
+            let mut __seen = [false; #num_option_slots];
+
             let __usage = #help;
 
             argh::parse_struct_args(
@@ -430,6 +437,8 @@ fn impl_from_args_struct_from_args<'a>(
                 argh::ParseStructOptions {
                     arg_to_slot: &[ #( #flag_str_to_output_table_map ,)* ],
                     slots: &mut [ #( #flag_output_table, )* ],
+                    seen: &mut __seen,
+                    conflicts: &[ #( #conflicts ,)* ],
                     help_triggers: &[ #( #parse_help_triggers ),* ],
                     version_triggers: &[ #( #version_triggers ),* ],
                     global_options: &[ #( #global_options ),* ],
@@ -587,6 +596,11 @@ fn impl_from_args_struct_redact_arg_values<'a>(
 
     let flag_str_to_output_table_map = flag_str_to_output_table_map_entries(fields);
     let global_options = global_options_entries(fields);
+    let conflicts = conflicts_entries_tokens(fields, errors);
+    let num_option_slots = fields
+        .iter()
+        .filter(|field| matches!(field.kind, FieldKind::Option | FieldKind::Switch))
+        .count();
 
     let mut subcommands_iter =
         fields.iter().filter(|field| field.kind == FieldKind::SubCommand).fuse();
@@ -643,6 +657,8 @@ fn impl_from_args_struct_redact_arg_values<'a>(
         fn redact_arg_values(__cmd_name: &[&str], __args: &[&str]) -> std::result::Result<Vec<String>, argh::EarlyExit> {
             #( #init_fields )*
 
+            let mut __seen = [false; #num_option_slots];
+
             let __usage = #help;
 
             argh::parse_struct_args(
@@ -651,6 +667,8 @@ fn impl_from_args_struct_redact_arg_values<'a>(
                 argh::ParseStructOptions {
                     arg_to_slot: &[ #( #flag_str_to_output_table_map ,)* ],
                     slots: &mut [ #( #flag_output_table, )* ],
+                    seen: &mut __seen,
+                    conflicts: &[ #( #conflicts ,)* ],
                     help_triggers: &[ #( #parse_help_triggers ),* ],
                     version_triggers: &[ #( #version_triggers ),* ],
                     global_options: &[ #( #global_options ),* ],
@@ -1042,6 +1060,69 @@ fn global_options_entries(fields: &[StructField<'_>]) -> Vec<TokenStream> {
         }
     }
     entries
+}
+
+/// Conflict pairs among options/switches, resolved to their slot indices in the
+/// flag output table plus their canonical `--long` display names. Each entry is
+/// `(pos_a, name_a, pos_b, name_b)`, meaning option `a` at slot `pos_a` and
+/// option `b` at slot `pos_b` are mutually exclusive.
+fn conflicts_entries(
+    errors: &Errors,
+    fields: &[StructField<'_>],
+) -> Vec<(usize, String, usize, String)> {
+    // Option/switch fields, in the same order as the flag output table.
+    let option_fields: Vec<&StructField<'_>> = fields
+        .iter()
+        .filter(|field| matches!(field.kind, FieldKind::Option | FieldKind::Switch))
+        .collect();
+
+    // Map from long name (without `--`) to the slot index of the field.
+    let mut index_by_long: HashMap<String, usize> = HashMap::new();
+    for (i, field) in option_fields.iter().enumerate() {
+        if let Some(long_name) = &field.long_name {
+            index_by_long.insert(long_name.trim_start_matches("--").to_owned(), i);
+        }
+    }
+
+    let mut pairs: Vec<(usize, String, usize, String)> = Vec::new();
+    for (i, field) in option_fields.iter().enumerate() {
+        for conflict in &field.attrs.conflicts_with {
+            let ref_name = conflict.value();
+            match index_by_long.get(&ref_name) {
+                Some(&j) if i != j => {
+                    let name_i = field.long_name.as_ref().unwrap().clone();
+                    let name_j = option_fields[j].long_name.as_ref().unwrap().clone();
+                    let already = pairs
+                        .iter()
+                        .any(|&(pa, _, pb, _)| (pa == i && pb == j) || (pa == j && pb == i));
+                    if !already {
+                        pairs.push((i, name_i, j, name_j));
+                    }
+                }
+                _ => {
+                    errors.err(
+                        conflict,
+                        &format!("`conflicts_with` references unknown option `{}`", ref_name),
+                    );
+                }
+            }
+        }
+    }
+    pairs
+}
+
+/// Token entries of the form `(pos_a, "--name-a", pos_b, "--name-b")` passed to
+/// `argh::ParseStructOptions` so the parser can reject mutually exclusive
+/// options. The `seen` array indexes into the same slot table.
+fn conflicts_entries_tokens(fields: &[StructField<'_>], errors: &Errors) -> Vec<TokenStream> {
+    conflicts_entries(errors, fields)
+        .into_iter()
+        .map(|(pa, na, pb, nb)| {
+            let na = syn::LitStr::new(&na, Span::call_site());
+            let nb = syn::LitStr::new(&nb, Span::call_site());
+            quote! { (#pa, #na, #pb, #nb) }
+        })
+        .collect()
 }
 
 /// For each non-optional field, add an entry to the `argh::MissingRequirements`.

@@ -1424,12 +1424,68 @@ mod fuchsia_commandline_tools_rubric {
         _b: bool,
     }
 
-    /// Running switches together is not allowed
+    /// Switches may be clustered: `-ab` behaves like `-a -b`.
     #[test]
-    fn switches_cannot_run_together() {
-        TwoSwitches::from_args(&["cmdname"], &["-a", "-b"])
-            .expect("parsing separate should succeed");
-        TwoSwitches::from_args(&["cmdname"], &["-ab"]).expect_err("parsing together should fail");
+    fn switches_can_be_clustered() {
+        let clustered = TwoSwitches::from_args(&["cmdname"], &["-ab"]).expect("clustered -ab");
+        let separate = TwoSwitches::from_args(&["cmdname"], &["-a", "-b"]).expect("separate -a -b");
+        assert!(clustered._a && clustered._b);
+        assert_eq!(clustered._a, separate._a);
+        assert_eq!(clustered._b, separate._b);
+    }
+
+    #[derive(FromArgs, Debug)]
+    /// Three Switches
+    struct ThreeSwitches {
+        #[argh(switch, short = 'a')]
+        /// a
+        _a: bool,
+        #[argh(switch, short = 'b')]
+        /// b
+        _b: bool,
+        #[argh(switch, short = 'c')]
+        /// c
+        _c: bool,
+    }
+
+    /// A cluster of three switches behaves identically to the same switches
+    /// given separately.
+    #[test]
+    fn three_switches_can_be_clustered() {
+        let clustered = ThreeSwitches::from_args(&["cmdname"], &["-abc"]).expect("clustered -abc");
+        let separate =
+            ThreeSwitches::from_args(&["cmdname"], &["-a", "-b", "-c"]).expect("separate -a -b -c");
+        assert!(clustered._a && clustered._b && clustered._c);
+        assert_eq!(clustered._a, separate._a);
+        assert_eq!(clustered._b, separate._b);
+        assert_eq!(clustered._c, separate._c);
+    }
+
+    #[derive(FromArgs, Debug)]
+    /// A switch followed by a value-taking option
+    struct SwitchThenOption {
+        #[argh(switch, short = 'v')]
+        /// verbose
+        verbose: bool,
+        #[argh(option, short = 'n')]
+        /// count
+        count: usize,
+    }
+
+    /// A cluster ending in a value-taking short consumes the remainder of the
+    /// cluster as that short's value, and falls back to the next argument when
+    /// the cluster ends at the value-taking short.
+    #[test]
+    fn cluster_ending_in_value_taking_short_consumes_remainder() {
+        let clustered =
+            SwitchThenOption::from_args(&["cmdname"], &["-vn5"]).expect("clustered -vn5");
+        assert!(clustered.verbose);
+        assert_eq!(clustered.count, 5);
+
+        let next_arg =
+            SwitchThenOption::from_args(&["cmdname"], &["-vn", "7"]).expect("-vn with next arg");
+        assert!(next_arg.verbose);
+        assert_eq!(next_arg.count, 7);
     }
 
     #[derive(FromArgs, Debug)]

@@ -2734,3 +2734,38 @@ Options:
 "#,
     );
 }
+
+#[test]
+fn conflicts_with_rejects_mutually_exclusive_options() {
+    #[derive(FromArgs, PartialEq, Debug)]
+    /// Query.
+    struct Query {
+        /// interactive mode
+        #[argh(switch, short = 'i', conflicts_with = "list")]
+        interactive: bool,
+        /// list mode
+        #[argh(switch, short = 'l')]
+        list: bool,
+        /// verbose mode
+        #[argh(switch, short = 'v')]
+        verbose: bool,
+    }
+
+    // A non-conflicting pair parses normally.
+    let ok = Query::from_args(&["query"], &["--interactive", "--verbose"])
+        .expect("non-conflicting pair should parse");
+    assert_eq!(ok, Query { interactive: true, list: false, verbose: true });
+
+    // Passing both options of a conflicting pair errors, naming both.
+    let e = Query::from_args(&["query"], &["--interactive", "--list"])
+        .expect_err("conflicting pair should error");
+    assert!(e.status.is_err());
+    assert!(e.output.contains("--interactive"), "unexpected: {:?}", e.output);
+    assert!(e.output.contains("--list"), "unexpected: {:?}", e.output);
+
+    // The order of the conflicting options does not matter.
+    let e = Query::from_args(&["query"], &["-l", "-i"]).expect_err("conflicting pair should error");
+    assert!(e.status.is_err());
+    assert!(e.output.contains("--interactive"), "unexpected: {:?}", e.output);
+    assert!(e.output.contains("--list"), "unexpected: {:?}", e.output);
+}

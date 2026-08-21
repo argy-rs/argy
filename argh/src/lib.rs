@@ -1033,7 +1033,7 @@ impl_flag_for_integers![u8, u16, u32, u64, u128, i8, i16, i32, i64, i128,];
 /// `parse_positionals`: Helper to parse positional arguments.
 /// `parse_subcommand`: Helper to parse a subcommand.
 /// `help_func`: Generate a help message.
-/// `version_func`: Generate a version message.
+/// `version_func`: Generate a version message from the current command name.
 #[doc(hidden)]
 pub fn parse_struct_args(
     cmd_name: &[&str],
@@ -1042,7 +1042,7 @@ pub fn parse_struct_args(
     mut parse_positionals: ParseStructPositionals<'_>,
     mut parse_subcommand: Option<ParseStructSubCommand<'_>>,
     help_func: &dyn Fn() -> String,
-    version_func: &dyn Fn() -> String,
+    version_func: &dyn Fn(&[&str]) -> String,
 ) -> Result<(), EarlyExit> {
     let mut help = false;
     let mut version = false;
@@ -1103,7 +1103,7 @@ pub fn parse_struct_args(
     }
 
     if version {
-        Err(EarlyExit { output: version_func(), status: Ok(()) })
+        Err(EarlyExit { output: version_func(cmd_name), status: Ok(()) })
     } else if help {
         Err(EarlyExit { output: help_func(), status: Ok(()) })
     } else {

@@ -404,6 +404,7 @@ fn impl_from_args_struct_from_args<'a>(
     let help_triggers = get_help_triggers(type_attrs);
     let parse_help_triggers = get_parse_help_triggers(type_attrs);
     let version_triggers = get_version_triggers(type_attrs);
+    let version_func = version_func(type_attrs);
 
     let help = if cfg!(feature = "help") {
         // Identifier referring to a value containing the name of the current command as an `&[&str]`.
@@ -447,7 +448,7 @@ fn impl_from_args_struct_from_args<'a>(
                 },
                 #parse_subcommands,
                 &|| __usage.clone(),
-                &|| ::core::format_args!("{} {}", ::core::env!("CARGO_PKG_NAME"), ::core::env!("CARGO_PKG_VERSION")).to_string(),
+                #version_func,
             )?;
 
             let mut #missing_requirements_ident = argh::MissingRequirements::default();
@@ -524,6 +525,36 @@ fn get_version_triggers(type_attrs: &TypeAttrs) -> Vec<String> {
     version_triggers
 }
 
+/// Generate the `version_func` closure passed to [`argh::parse_struct_args`].
+///
+/// For a subcommand this prints a subcommand-qualified name like clap's
+/// `zoxide-add 0.10.0` (i.e. `<crate>-<subcommand> <version>`), while the
+/// top-level command keeps printing `<crate> <version>`. The subcommand name is
+/// the last element of the runtime `cmd_name`, which the subcommand parser
+/// appends when dispatching.
+fn version_func(type_attrs: &TypeAttrs) -> TokenStream {
+    if type_attrs.is_subcommand.is_some() {
+        quote! {
+            &|__cmd_name: &[&str]| {
+                let __name = match __cmd_name.last() {
+                    Some(__subcommand) => {
+                        let mut __name = ::core::env!("CARGO_PKG_NAME").to_owned();
+                        __name.push('-');
+                        __name.push_str(__subcommand);
+                        __name
+                    }
+                    None => ::core::env!("CARGO_PKG_NAME").to_owned(),
+                };
+                ::core::format_args!("{} {}", __name, ::core::env!("CARGO_PKG_VERSION")).to_string()
+            }
+        }
+    } else {
+        quote! {
+            &|_| ::core::format_args!("{} {}", ::core::env!("CARGO_PKG_NAME"), ::core::env!("CARGO_PKG_VERSION")).to_string()
+        }
+    }
+}
+
 fn impl_from_args_struct_redact_arg_values<'a>(
     errors: &Errors,
     type_attrs: &TypeAttrs,
@@ -598,6 +629,7 @@ fn impl_from_args_struct_redact_arg_values<'a>(
     let help_triggers = get_help_triggers(type_attrs);
     let parse_help_triggers = get_parse_help_triggers(type_attrs);
     let version_triggers = get_version_triggers(type_attrs);
+    let version_func = version_func(type_attrs);
 
     let help = if cfg!(feature = "help") {
         // Identifier referring to a value containing the name of the current command as an `&[&str]`.
@@ -637,7 +669,7 @@ fn impl_from_args_struct_redact_arg_values<'a>(
                 },
                 #redact_subcommands,
                 &|| __usage.clone(),
-                &|| ::core::format_args!("{} {}", ::core::env!("CARGO_PKG_NAME"), ::core::env!("CARGO_PKG_VERSION")).to_string(),
+                #version_func,
             )?;
 
             let mut #missing_requirements_ident = argh::MissingRequirements::default();

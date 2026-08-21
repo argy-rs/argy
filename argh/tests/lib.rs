@@ -1836,7 +1836,8 @@ Options:
 
     #[test]
     fn version_short_flag_subcommand() {
-        let version = format!("{} {}", env!("CARGO_PKG_NAME"), env!("CARGO_PKG_VERSION"));
+        let version =
+            format!("{}-{} {}", env!("CARGO_PKG_NAME"), "first", env!("CARGO_PKG_VERSION"));
         for trigger in &["-V", "--version"] {
             match HelpTopLevel::from_args(&["cmdname"], &["first", trigger]) {
                 Ok(_) => panic!("version was parsed as args"),
@@ -1846,6 +1847,21 @@ Options:
                 }
             }
         }
+    }
+
+    #[test]
+    fn version_output_is_qualified_for_subcommands_but_not_top_level() {
+        let top_level = format!("{} {}", env!("CARGO_PKG_NAME"), env!("CARGO_PKG_VERSION"));
+        let subcommand =
+            format!("{}-{} {}", env!("CARGO_PKG_NAME"), "first", env!("CARGO_PKG_VERSION"));
+
+        let top = HelpTopLevel::from_args(&["cmdname"], &["--version"])
+            .expect_err("version should exit early");
+        assert_eq!(top_level, top.output);
+
+        let sub = HelpTopLevel::from_args(&["cmdname"], &["first", "--version"])
+            .expect_err("version should exit early");
+        assert_eq!(subcommand, sub.output);
     }
 
     #[test]

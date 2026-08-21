@@ -180,6 +180,7 @@ pub(crate) fn help(
     for (present, env, label) in [
         (ty_attrs.repository.is_some(), "CARGO_PKG_REPOSITORY", "Repository:"),
         (ty_attrs.homepage.is_some(), "CARGO_PKG_HOMEPAGE", "Homepage:"),
+        (ty_attrs.author.is_some(), "CARGO_PKG_AUTHORS", "Author:"),
     ] {
         if present {
             metadata_stmts.push(quote! {

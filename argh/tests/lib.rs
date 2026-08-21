@@ -39,6 +39,101 @@ fn basic_example() {
 }
 
 #[test]
+fn option_alias() {
+    #[derive(FromArgs, PartialEq, Debug)]
+    /// Reach new heights.
+    struct GoUp {
+        /// how high to go
+        #[argh(option, alias = "max-height", alias = "alt")]
+        height: usize,
+    }
+
+    // The canonical name still works.
+    let up = GoUp::from_args(&["cmd"], &["--height", "5"]).expect("canonical");
+    assert_eq!(up, GoUp { height: 5 });
+
+    // The aliases also work.
+    let up = GoUp::from_args(&["cmd"], &["--max-height", "7"]).expect("alias 1");
+    assert_eq!(up, GoUp { height: 7 });
+
+    let up = GoUp::from_args(&["cmd"], &["--alt", "9"]).expect("alias 2");
+    assert_eq!(up, GoUp { height: 9 });
+}
+
+#[test]
+fn switch_alias() {
+    #[derive(FromArgs, PartialEq, Debug)]
+    /// Reach new heights.
+    struct GoUp {
+        /// whether to jump
+        #[argh(switch, alias = "jmp")]
+        jump: bool,
+    }
+
+    let up = GoUp::from_args(&["cmd"], &["--jmp"]).expect("alias");
+    assert_eq!(up, GoUp { jump: true });
+}
+
+#[test]
+fn choice_value_alias() {
+    #[derive(FromArgValue, PartialEq, Debug)]
+    enum Mode {
+        SoftCore,
+        #[argh(alias = "fast")]
+        HardCore,
+    }
+
+    #[derive(FromArgs, PartialEq, Debug)]
+    /// Do the thing.
+    struct DoIt {
+        #[argh(option)]
+        /// how to do it
+        how: Mode,
+    }
+
+    // The canonical name still works.
+    let c = DoIt::from_args(&["cmd"], &["--how", "hard_core"]).expect("canonical");
+    assert_eq!(c, DoIt { how: Mode::HardCore });
+
+    // The alias also works.
+    let a = DoIt::from_args(&["cmd"], &["--how", "fast"]).expect("alias");
+    assert_eq!(a, DoIt { how: Mode::HardCore });
+}
+
+#[test]
+fn subcommand_alias() {
+    #[derive(FromArgs, PartialEq, Debug)]
+    /// Top-level command.
+    struct TopLevel {
+        #[argh(subcommand)]
+        nested: MySubCommandEnum,
+    }
+
+    #[derive(FromArgs, PartialEq, Debug)]
+    #[argh(subcommand)]
+    enum MySubCommandEnum {
+        One(SubCommandOne),
+    }
+
+    #[derive(FromArgs, PartialEq, Debug)]
+    /// First subcommand.
+    #[argh(subcommand, name = "one", alias = "uno")]
+    struct SubCommandOne {
+        #[argh(option)]
+        /// how many x
+        x: usize,
+    }
+
+    // The canonical name still works.
+    let one = TopLevel::from_args(&["cmd"], &["one", "--x", "2"]).expect("canonical");
+    assert_eq!(one, TopLevel { nested: MySubCommandEnum::One(SubCommandOne { x: 2 }) });
+
+    // The alias also works.
+    let uno = TopLevel::from_args(&["cmd"], &["uno", "--x", "3"]).expect("alias");
+    assert_eq!(uno, TopLevel { nested: MySubCommandEnum::One(SubCommandOne { x: 3 }) });
+}
+
+#[test]
 #[cfg(feature = "help")]
 fn missing_required_argument_prints_usage() {
     #[derive(FromArgs, Debug)]
@@ -425,9 +520,24 @@ fn dynamic_subcommand_example() {
     impl argh::DynamicSubCommand for DynamicSubCommandImpl {
         fn commands() -> &'static [&'static argh::CommandInfo] {
             &[
-                &argh::CommandInfo { name: "three", short: &'\0', description: "Third command" },
-                &argh::CommandInfo { name: "four", short: &'\0', description: "Fourth command" },
-                &argh::CommandInfo { name: "five", short: &'\0', description: "Fifth command" },
+                &argh::CommandInfo {
+                    name: "three",
+                    short: &'\0',
+                    description: "Third command",
+                    aliases: &[],
+                },
+                &argh::CommandInfo {
+                    name: "four",
+                    short: &'\0',
+                    description: "Fourth command",
+                    aliases: &[],
+                },
+                &argh::CommandInfo {
+                    name: "five",
+                    short: &'\0',
+                    description: "Fifth command",
+                    aliases: &[],
+                },
             ]
         }
 
@@ -1604,6 +1714,7 @@ Options:
                 name: "plugin",
                 short: &'\0',
                 description: "Example dynamic command",
+                aliases: &[],
             }]
         }
 

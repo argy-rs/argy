@@ -23,6 +23,8 @@ pub struct FieldAttrs {
     pub greedy: Option<syn::Path>,
     pub hidden_help: bool,
     pub usage: bool,
+    /// Alternative long names for an option or switch.
+    pub aliases: Vec<syn::LitStr>,
 }
 
 /// The purpose of a particular field on a `#![derive(FromArgs)]` struct.
@@ -81,7 +83,11 @@ impl FieldAttrs {
 
             for meta in ml {
                 let name = meta.path();
-                if name.is_ident("arg_name") {
+                if name.is_ident("alias") {
+                    if let Some(m) = errors.expect_meta_name_value(&meta) {
+                        parse_attr_multi_string(errors, m, &mut this.aliases);
+                    }
+                } else if name.is_ident("arg_name") {
                     if let Some(m) = errors.expect_meta_name_value(&meta) {
                         this.parse_attr_arg_name(errors, m);
                     }
@@ -134,7 +140,7 @@ impl FieldAttrs {
                         &meta,
                         concat!(
                             "Invalid field-level `argh` attribute\n",
-                            "Expected one of: `arg_name`, `default`, `description`, `from_str_fn`, `greedy`, ",
+                            "Expected one of: `alias`, `arg_name`, `default`, `description`, `from_str_fn`, `greedy`, ",
                             "`long`, `option`, `short`, `subcommand`, `switch`, `hidden_help`, `usage`",
                         ),
                     );
@@ -150,6 +156,25 @@ impl FieldAttrs {
                     "`default` may only be specified on `#[argh(option)]` \
                      or `#[argh(positional)]` fields",
                 ),
+            }
+        }
+
+        if !this.aliases.is_empty() {
+            match this.field_type.as_ref().map(|f| f.kind) {
+                Some(FieldKind::Option) | Some(FieldKind::Switch) => {
+                    for alias in &this.aliases {
+                        check_long_name(errors, alias, &alias.value());
+                    }
+                }
+                _ => {
+                    for alias in &this.aliases {
+                        errors.err(
+                            alias,
+                            "`alias` may only be specified on `#[argh(option)]` \
+                             or `#[argh(switch)]` fields",
+                        );
+                    }
+                }
             }
         }
 
@@ -290,6 +315,8 @@ pub struct TypeAttrs {
     /// Arguments that trigger printing of the crate name and version
     pub version_triggers: Option<Vec<syn::LitStr>>,
     pub usage: Option<syn::LitStr>,
+    /// Alternative names for a subcommand.
+    pub aliases: Vec<syn::LitStr>,
 }
 
 impl TypeAttrs {
@@ -311,7 +338,11 @@ impl TypeAttrs {
 
             for meta in ml {
                 let name = meta.path();
-                if name.is_ident("description") {
+                if name.is_ident("alias") {
+                    if let Some(m) = errors.expect_meta_name_value(&meta) {
+                        parse_attr_multi_string(errors, m, &mut this.aliases);
+                    }
+                } else if name.is_ident("description") {
                     if let Some(m) = errors.expect_meta_name_value(&meta) {
                         parse_attr_description(errors, m, &mut this.description);
                     }
@@ -372,7 +403,7 @@ impl TypeAttrs {
                         &meta,
                         concat!(
                             "Invalid type-level `argh` attribute\n",
-                            "Expected one of: `author`, `description`, `error_code`, `example`, `homepage`, ",
+                            "Expected one of: `alias`, `author`, `description`, `error_code`, `example`, `homepage`, ",
                             "`name`, `note`, `repository`, `short`, `subcommand`, `usage`, ",
                             "`help_triggers`, `version_triggers`",
                         ),
@@ -591,6 +622,8 @@ impl VariantAttrs {
 #[derive(Default)]
 pub struct ChoiceVariantAttrs {
     pub name_override: Option<syn::LitStr>,
+    /// Alternative string values that map to this variant.
+    pub aliases: Vec<syn::LitStr>,
 }
 
 impl ChoiceVariantAttrs {
@@ -607,7 +640,11 @@ impl ChoiceVariantAttrs {
 
             for meta in ml {
                 let name = meta.path();
-                if name.is_ident("name") {
+                if name.is_ident("alias") {
+                    if let Some(m) = errors.expect_meta_name_value(&meta) {
+                        parse_attr_multi_string(errors, m, &mut this.aliases);
+                    }
+                } else if name.is_ident("name") {
                     if let Some(m) = errors.expect_meta_name_value(&meta) {
                         parse_attr_single_string(errors, m, "name", &mut this.name_override);
                     }
@@ -615,7 +652,7 @@ impl ChoiceVariantAttrs {
                     errors.err(
                         &meta,
                         "Invalid variant-level `argh` attribute\n\
-                         Choice variants can only have the `name` attribute.",
+                         Choice variants can only have the `name` or `alias` attribute.",
                     );
                 }
             }
@@ -785,6 +822,7 @@ pub fn check_enum_type_attrs(errors: &Errors, type_attrs: &TypeAttrs, type_span:
         help_triggers,
         version_triggers,
         usage,
+        aliases,
     } = type_attrs;
 
     // Ensure that `#[argh(subcommand)]` is present.
@@ -841,6 +879,9 @@ pub fn check_enum_type_attrs(errors: &Errors, type_attrs: &TypeAttrs, type_span:
     }
     if let Some(usage) = usage {
         err_unused_enum_attr(errors, usage);
+    }
+    if let Some(alias) = aliases.first() {
+        err_unused_enum_attr(errors, alias);
     }
 }
 

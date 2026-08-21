@@ -276,6 +276,8 @@ pub fn has_argh_attrs(attrs: &[syn::Attribute]) -> bool {
 #[derive(Default)]
 pub struct TypeAttrs {
     pub is_subcommand: Option<syn::Ident>,
+    pub repository: Option<syn::Ident>,
+    pub homepage: Option<syn::Ident>,
     pub name: Option<syn::LitStr>,
     pub short: Option<syn::LitChar>,
     pub description: Option<Description>,
@@ -332,6 +334,16 @@ impl TypeAttrs {
                     if let Some(m) = errors.expect_meta_name_value(&meta) {
                         this.parse_attr_note(errors, m);
                     }
+                } else if name.is_ident("repository") {
+                    if let Some(ident) = errors.expect_meta_word(&meta).and_then(|p| p.get_ident())
+                    {
+                        this.parse_attr_repository(errors, ident);
+                    }
+                } else if name.is_ident("homepage") {
+                    if let Some(ident) = errors.expect_meta_word(&meta).and_then(|p| p.get_ident())
+                    {
+                        this.parse_attr_homepage(errors, ident);
+                    }
                 } else if name.is_ident("subcommand") {
                     if let Some(ident) = errors.expect_meta_word(&meta).and_then(|p| p.get_ident())
                     {
@@ -354,9 +366,9 @@ impl TypeAttrs {
                         &meta,
                         concat!(
                             "Invalid type-level `argh` attribute\n",
-                            "Expected one of: `description`, `error_code`, `example`, `name`, ",
-                            "`note`, `short`, `subcommand`, `usage`, `help_triggers`, ",
-                            "`version_triggers`",
+                            "Expected one of: `description`, `error_code`, `example`, `homepage`, ",
+                            "`name`, `note`, `repository`, `short`, `subcommand`, `usage`, ",
+                            "`help_triggers`, `version_triggers`",
                         ),
                     );
                 }
@@ -447,6 +459,22 @@ impl TypeAttrs {
             errors.duplicate_attrs("subcommand", first, ident);
         } else {
             self.is_subcommand = Some(ident.clone());
+        }
+    }
+
+    fn parse_attr_repository(&mut self, errors: &Errors, ident: &syn::Ident) {
+        if let Some(first) = &self.repository {
+            errors.duplicate_attrs("repository", first, ident);
+        } else {
+            self.repository = Some(ident.clone());
+        }
+    }
+
+    fn parse_attr_homepage(&mut self, errors: &Errors, ident: &syn::Ident) {
+        if let Some(first) = &self.homepage {
+            errors.duplicate_attrs("homepage", first, ident);
+        } else {
+            self.homepage = Some(ident.clone());
         }
     }
 
@@ -731,6 +759,8 @@ fn parse_attr_description(errors: &Errors, m: &syn::MetaNameValue, slot: &mut Op
 pub fn check_enum_type_attrs(errors: &Errors, type_attrs: &TypeAttrs, type_span: &Span) {
     let TypeAttrs {
         is_subcommand,
+        repository,
+        homepage,
         name,
         short,
         description,
@@ -755,6 +785,12 @@ pub fn check_enum_type_attrs(errors: &Errors, type_attrs: &TypeAttrs, type_span:
     }
 
     // Error on all other type-level attributes.
+    if let Some(repository) = repository {
+        err_unused_enum_attr(errors, repository);
+    }
+    if let Some(homepage) = homepage {
+        err_unused_enum_attr(errors, homepage);
+    }
     if let Some(name) = name {
         err_unused_enum_attr(errors, name);
     }

@@ -1125,17 +1125,27 @@ impl ParseStructOptions<'_> {
     /// `remaining_args`: the remaining command line arguments. This slice
     /// will be advanced forwards if the option takes a value argument.
     fn parse(&mut self, arg: &str, remaining_args: &mut &[&str]) -> Result<(), String> {
-        let pos = self
+        let pos = match self
             .arg_to_slot
             .iter()
             .find_map(|&(name, pos)| if name == arg { Some(pos) } else { None })
-            .ok_or_else(|| {
-                unrecognized_argument(
+        {
+            Some(pos) => pos,
+            None => {
+                // A single-dash argument longer than one character that is not
+                // a known option is treated as a cluster of short flags:
+                // `-abc` is parsed as `-a -b -c`. A value-taking short in the
+                // cluster consumes the remainder of the cluster as its value.
+                if arg.len() > 2 && arg.starts_with('-') && !arg.starts_with("--") {
+                    return self.parse_cluster(arg, remaining_args);
+                }
+                return Err(unrecognized_argument(
                     arg,
                     self.arg_to_slot,
                     self.help_triggers.iter().chain(self.version_triggers.iter()).copied(),
-                )
-            })?;
+                ));
+            }
+        };
 
         match self.slots[pos] {
             ParseStructOption::Flag(ref mut b) => b.set_flag(arg),
@@ -1151,6 +1161,68 @@ impl ParseStructOptions<'_> {
             }
         }
 
+        Ok(())
+    }
+
+    /// Expand a cluster of short flags such as `-abc` into its constituent
+    /// switches (`-a -b -c`). If a short in the cluster maps to a value-taking
+    /// option, the remainder of the cluster is consumed as that option's value,
+    /// falling back to the next argument when the cluster ends at that short.
+    fn parse_cluster(&mut self, arg: &str, remaining_args: &mut &[&str]) -> Result<(), String> {
+        let mut chars = arg[1..].chars().peekable();
+        while let Some(c) = chars.next() {
+            let short = ['-', c].iter().collect::<String>();
+            let pos = self
+                .arg_to_slot
+                .iter()
+                .find_map(|&(name, pos)| if name == short { Some(pos) } else { None })
+                .ok_or_else(|| {
+                    unrecognized_argument(
+                        arg,
+                        self.arg_to_slot,
+                        self.help_triggers.iter().chain(self.version_triggers.iter()).copied(),
+                    )
+                })?;
+
+            match &mut self.slots[pos] {
+                ParseStructOption::Flag(b) => b.set_flag(&short),
+                ParseStructOption::Value(pvs) => {
+                    let rest: String = chars.collect();
+                    if rest.is_empty() {
+                        let value = remaining_args.first().ok_or_else(|| {
+                            ["No value provided for option '", &short, "'.\n"].concat()
+                        })?;
+                        *remaining_args = &remaining_args[1..];
+                        pvs.fill_slot(&short, value).map_err(|s| {
+                            [
+                                "Error parsing option '",
+                                &short,
+                                "' with value '",
+                                value,
+                                "': ",
+                                &s,
+                                "\n",
+                            ]
+                            .concat()
+                        })?;
+                    } else {
+                        pvs.fill_slot(&short, &rest).map_err(|s| {
+                            [
+                                "Error parsing option '",
+                                &short,
+                                "' with value '",
+                                &rest,
+                                "': ",
+                                &s,
+                                "\n",
+                            ]
+                            .concat()
+                        })?;
+                    }
+                    return Ok(());
+                }
+            }
+        }
         Ok(())
     }
 }

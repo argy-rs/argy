@@ -278,6 +278,7 @@ pub struct TypeAttrs {
     pub is_subcommand: Option<syn::Ident>,
     pub repository: Option<syn::Ident>,
     pub homepage: Option<syn::Ident>,
+    pub author: Option<syn::Ident>,
     pub name: Option<syn::LitStr>,
     pub short: Option<syn::LitChar>,
     pub description: Option<Description>,
@@ -344,6 +345,11 @@ impl TypeAttrs {
                     {
                         this.parse_attr_homepage(errors, ident);
                     }
+                } else if name.is_ident("author") {
+                    if let Some(ident) = errors.expect_meta_word(&meta).and_then(|p| p.get_ident())
+                    {
+                        this.parse_attr_author(errors, ident);
+                    }
                 } else if name.is_ident("subcommand") {
                     if let Some(ident) = errors.expect_meta_word(&meta).and_then(|p| p.get_ident())
                     {
@@ -366,7 +372,7 @@ impl TypeAttrs {
                         &meta,
                         concat!(
                             "Invalid type-level `argh` attribute\n",
-                            "Expected one of: `description`, `error_code`, `example`, `homepage`, ",
+                            "Expected one of: `author`, `description`, `error_code`, `example`, `homepage`, ",
                             "`name`, `note`, `repository`, `short`, `subcommand`, `usage`, ",
                             "`help_triggers`, `version_triggers`",
                         ),
@@ -475,6 +481,14 @@ impl TypeAttrs {
             errors.duplicate_attrs("homepage", first, ident);
         } else {
             self.homepage = Some(ident.clone());
+        }
+    }
+
+    fn parse_attr_author(&mut self, errors: &Errors, ident: &syn::Ident) {
+        if let Some(first) = &self.author {
+            errors.duplicate_attrs("author", first, ident);
+        } else {
+            self.author = Some(ident.clone());
         }
     }
 
@@ -761,6 +775,7 @@ pub fn check_enum_type_attrs(errors: &Errors, type_attrs: &TypeAttrs, type_span:
         is_subcommand,
         repository,
         homepage,
+        author,
         name,
         short,
         description,
@@ -790,6 +805,9 @@ pub fn check_enum_type_attrs(errors: &Errors, type_attrs: &TypeAttrs, type_span:
     }
     if let Some(homepage) = homepage {
         err_unused_enum_attr(errors, homepage);
+    }
+    if let Some(author) = author {
+        err_unused_enum_attr(errors, author);
     }
     if let Some(name) = name {
         err_unused_enum_attr(errors, name);

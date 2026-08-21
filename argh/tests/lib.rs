@@ -1822,6 +1822,33 @@ Options:
     }
 
     #[test]
+    #[cfg(feature = "help")]
+    fn help_short_flag_subcommand() {
+        expect_help(&["first", "-h"], FIRST_HELP_STRING);
+    }
+
+    #[test]
+    #[cfg(feature = "help")]
+    fn help_long_forms_still_work_on_subcommand() {
+        expect_help(&["first", "--help"], FIRST_HELP_STRING);
+        expect_help(&["first", "help"], FIRST_HELP_STRING);
+    }
+
+    #[test]
+    fn version_short_flag_subcommand() {
+        let version = format!("{} {}", env!("CARGO_PKG_NAME"), env!("CARGO_PKG_VERSION"));
+        for trigger in &["-V", "--version"] {
+            match HelpTopLevel::from_args(&["cmdname"], &["first", trigger]) {
+                Ok(_) => panic!("version was parsed as args"),
+                Err(e) => {
+                    assert_eq!(version, e.output);
+                    e.status.expect("version returned an error");
+                }
+            }
+        }
+    }
+
+    #[test]
     fn help_flag_trailing_arguments_are_an_error() {
         let e = OneOption::from_args(&["cmdname"], &["--help", "--foo", "bar"])
             .expect_err("should exit early");

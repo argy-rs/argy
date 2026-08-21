@@ -1079,8 +1079,19 @@ pub fn parse_struct_args(
             continue;
         }
 
-        if let Some(ref mut parse_subcommand) = parse_subcommand {
-            if parse_subcommand.parse(help, cmd_name, next_arg, remaining_args)? {
+        if let Some(parse_subcommand) = &mut parse_subcommand {
+            if parse_subcommand.matches(next_arg) {
+                // Strip global options from the remaining arguments so a
+                // `global` option declared on this command is also accepted
+                // after the subcommand. Skips allocation when there are none.
+                let filtered_args;
+                let sub_args: &[&str] = if parse_options.global_options.is_empty() {
+                    remaining_args
+                } else {
+                    filtered_args = parse_options.filter_global_options(remaining_args)?;
+                    &filtered_args
+                };
+                parse_subcommand.parse(help, cmd_name, next_arg, sub_args)?;
                 // Unset `help`, since we handled it in the subcommand
                 help = false;
                 break 'parse_args;
@@ -1116,6 +1127,11 @@ pub struct ParseStructOptions<'a> {
     /// version triggers is a list of strings that trigger printing of the
     /// crate name and version
     pub version_triggers: &'a [&'a str],
+
+    /// Names of options/switches (long, short, and alias forms) declared as
+    /// `global` on the enclosing command. These are also accepted after a
+    /// subcommand has been parsed, and are routed to this command's slots.
+    pub global_options: &'static [&'static str],
 }
 
 impl ParseStructOptions<'_> {
@@ -1162,6 +1178,38 @@ impl ParseStructOptions<'_> {
         }
 
         Ok(())
+    }
+
+    /// Strip global options out of `args`, parsing them into this command's
+    /// slots, and return the remaining (non-global) arguments. This lets a
+    /// `global` option declared on a parent be accepted after a subcommand has
+    /// been matched. Arguments after a `--` terminator are left untouched.
+    fn filter_global_options<'b>(&mut self, args: &[&'b str]) -> Result<Vec<&'b str>, EarlyExit> {
+        let mut filtered = Vec::new();
+        let mut idx = 0;
+        while idx < args.len() {
+            let arg = args[idx];
+            if arg == "--" {
+                filtered.extend_from_slice(&args[idx..]);
+                break;
+            }
+            if self.global_options.contains(&arg) {
+                // `parse` expects the arguments *after* the flag itself.
+                let mut remaining = &args[idx + 1..];
+                let rem_before = remaining.len();
+                self.parse(arg, &mut remaining)
+                    .map_err(|s| EarlyExit { output: s, status: Err(()) })?;
+                let consumed = rem_before - remaining.len();
+                // A switch/flag does not advance `remaining`, so it consumes
+                // just the already-indexed flag. A value option additionally
+                // consumes its value.
+                idx += 1 + consumed;
+            } else {
+                filtered.push(arg);
+                idx += 1;
+            }
+        }
+        Ok(filtered)
     }
 
     /// Expand a cluster of short flags such as `-abc` into its constituent
@@ -1348,35 +1396,49 @@ pub struct ParseStructSubCommand<'a> {
 }
 
 impl ParseStructSubCommand<'_> {
+    /// Returns `true` if `arg` names one of the subcommands (or its alias or
+    /// short form). Does not invoke the subcommand parser.
+    fn matches(&self, arg: &str) -> bool {
+        self.subcommands.iter().chain(self.dynamic_subcommands.iter()).any(|subcommand| {
+            subcommand.name == arg
+                || subcommand.aliases.iter().any(|&alias| alias == arg)
+                || arg.chars().count() == 1 && arg.chars().next().unwrap() == *subcommand.short
+        })
+    }
+
+    /// Invoke the subcommand parser for a subcommand already known to match
+    /// `arg` (via [`ParseStructSubCommand::matches`]).
     fn parse(
         &mut self,
         help: bool,
         cmd_name: &[&str],
         arg: &str,
         remaining_args: &[&str],
-    ) -> Result<bool, EarlyExit> {
-        for subcommand in self.subcommands.iter().chain(self.dynamic_subcommands.iter()) {
-            if subcommand.name == arg
-                || subcommand.aliases.iter().any(|&alias| alias == arg)
-                || arg.chars().count() == 1 && arg.chars().next().unwrap() == *subcommand.short
-            {
-                let mut command = cmd_name.to_owned();
-                command.push(subcommand.name);
-                let prepended_help;
-                let remaining_args = if help {
-                    prepended_help = prepend_help(remaining_args);
-                    &prepended_help
-                } else {
-                    remaining_args
-                };
+    ) -> Result<(), EarlyExit> {
+        let subcommand = self
+            .subcommands
+            .iter()
+            .chain(self.dynamic_subcommands.iter())
+            .find(|subcommand| {
+                subcommand.name == arg
+                    || subcommand.aliases.iter().any(|&alias| alias == arg)
+                    || arg.chars().count() == 1 && arg.chars().next().unwrap() == *subcommand.short
+            })
+            .expect("subcommand must have matched in ParseStructSubCommand::matches");
 
-                (self.parse_func)(&command, remaining_args)?;
+        let mut command = cmd_name.to_owned();
+        command.push(subcommand.name);
+        let prepended_help;
+        let remaining_args = if help {
+            prepended_help = prepend_help(remaining_args);
+            &prepended_help
+        } else {
+            remaining_args
+        };
 
-                return Ok(true);
-            }
-        }
+        (self.parse_func)(&command, remaining_args)?;
 
-        Ok(false)
+        Ok(())
     }
 }
 

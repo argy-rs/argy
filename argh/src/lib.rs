@@ -279,6 +279,7 @@
 //!                 short: &'d',
 //!                 description: "A dynamic command",
 //!                 aliases: &[],
+//!                 hidden: false,
 //!             })));
 //!
 //!             commands
@@ -1451,7 +1452,7 @@ fn prepend_help<'a>(args: &[&'a str]) -> Vec<&'a str> {
 #[doc(hidden)]
 pub fn print_subcommands<'a>(commands: impl Iterator<Item = &'a CommandInfo>) -> String {
     let mut out = String::new();
-    let commands: Vec<_> = commands.collect();
+    let commands: Vec<_> = commands.filter(|cmd| !cmd.hidden).collect();
     let description_indent = argh_shared::description_indent(commands.iter().copied());
     for cmd in commands {
         argh_shared::write_description(&mut out, cmd, description_indent);

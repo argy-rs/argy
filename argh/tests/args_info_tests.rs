@@ -84,6 +84,7 @@ fn args_info_test_subcommand() {
         notes: &[],
         positionals: &[],
         error_codes: &[],
+        hidden: false,
         commands: vec![
             SubCommandInfo { name: "one", command: command_one.clone() },
             SubCommandInfo {
@@ -915,18 +916,21 @@ fn test_dynamic_subcommand() {
                     short: &'\0',
                     description: "Third command",
                     aliases: &[],
+                    hidden: false,
                 },
                 &argh::CommandInfo {
                     name: "four",
                     short: &'\0',
                     description: "Fourth command",
                     aliases: &[],
+                    hidden: false,
                 },
                 &argh::CommandInfo {
                     name: "five",
                     short: &'\0',
                     description: "Fifth command",
                     aliases: &[],
+                    hidden: false,
                 },
             ]
         }

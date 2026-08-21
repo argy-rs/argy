@@ -16,6 +16,9 @@ pub struct CommandInfo<'a> {
     pub description: &'a str,
     /// Alternative names for the command.
     pub aliases: &'a [&'a str],
+    /// Whether this command should be hidden from help and completion output.
+    /// Hidden commands remain invocable but are not listed.
+    pub hidden: bool,
 }
 
 impl<'a> Default for CommandInfo<'a> {
@@ -25,6 +28,7 @@ impl<'a> Default for CommandInfo<'a> {
             short: &'\0',
             description: Default::default(),
             aliases: &[],
+            hidden: false,
         }
     }
 }
@@ -51,6 +55,9 @@ pub struct CommandInfoWithArgs<'a> {
     pub positionals: &'a [PositionalInfo<'a>],
     /// Error code information
     pub error_codes: &'a [ErrorCodeInfo<'a>],
+    /// Whether this command should be hidden from help and completion output.
+    /// Hidden commands remain invocable but are not listed.
+    pub hidden: bool,
 }
 
 impl<'a> Default for CommandInfoWithArgs<'a> {
@@ -65,6 +72,7 @@ impl<'a> Default for CommandInfoWithArgs<'a> {
             commands: Default::default(),
             positionals: Default::default(),
             error_codes: Default::default(),
+            hidden: false,
         }
     }
 }

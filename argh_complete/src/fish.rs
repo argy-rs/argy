@@ -23,7 +23,7 @@ fn collect_value_flags(cmd: &CommandInfoWithArgs<'_>, out: &mut Vec<String>) {
             }
         }
     }
-    for sub in &cmd.commands {
+    for sub in cmd.commands.iter().filter(|s| !s.command.hidden) {
         collect_value_flags(&sub.command, out);
     }
 }
@@ -147,7 +147,7 @@ fn generate_fish_cmd(
     }
 
     // Generate immediate subcommands (as arguments to this command)
-    for subcmd in &cmd.commands {
+    for subcmd in cmd.commands.iter().filter(|s| !s.command.hidden) {
         let mut line = format!("complete -c {}", base_cmd);
         if !joined_condition.is_empty() {
             line.push(' ');
@@ -163,7 +163,7 @@ fn generate_fish_cmd(
     }
 
     // Recurse
-    for subcmd in &cmd.commands {
+    for subcmd in cmd.commands.iter().filter(|s| !s.command.hidden) {
         let mut new_parents = parent_subcommands.to_vec();
         new_parents.push(subcmd.name);
         generate_fish_cmd(out, bin_name, base_cmd, &subcmd.command, &new_parents);

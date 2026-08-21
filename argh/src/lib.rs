@@ -1169,39 +1169,61 @@ impl ParseStructOptions<'_> {
     /// `remaining_args`: the remaining command line arguments. This slice
     /// will be advanced forwards if the option takes a value argument.
     fn parse(&mut self, arg: &str, remaining_args: &mut &[&str]) -> Result<(), String> {
-        let pos = match self
-            .arg_to_slot
-            .iter()
-            .find_map(|&(name, pos)| if name == arg { Some(pos) } else { None })
-        {
-            Some(pos) => pos,
-            None => {
-                // A single-dash argument longer than one character that is not
-                // a known option is treated as a cluster of short flags:
-                // `-abc` is parsed as `-a -b -c`. A value-taking short in the
-                // cluster consumes the remainder of the cluster as its value.
-                if arg.len() > 2 && arg.starts_with('-') && !arg.starts_with("--") {
-                    return self.parse_cluster(arg, remaining_args);
-                }
-                return Err(unrecognized_argument(
-                    arg,
-                    self.arg_to_slot,
-                    self.help_triggers.iter().chain(self.version_triggers.iter()).copied(),
-                ));
-            }
+        // Split an inline value out of a long option (`--opt=value`). The
+        // `--opt value` form (without `=`) is handled unchanged below.
+        let (arg_name, inline_value) = match arg.find('=') {
+            Some(eq) if arg.starts_with("--") => (&arg[..eq], Some(&arg[eq + 1..])),
+            _ => (arg, None),
         };
+
+        let pos =
+            match self
+                .arg_to_slot
+                .iter()
+                .find_map(|&(name, pos)| if name == arg_name { Some(pos) } else { None })
+            {
+                Some(pos) => pos,
+                None => {
+                    // A single-dash argument longer than one character that is not
+                    // a known option is treated as a cluster of short flags:
+                    // `-abc` is parsed as `-a -b -c`. A value-taking short in the
+                    // cluster consumes the remainder of the cluster as its value.
+                    if inline_value.is_none()
+                        && arg.len() > 2
+                        && arg.starts_with('-')
+                        && !arg.starts_with("--")
+                    {
+                        return self.parse_cluster(arg, remaining_args);
+                    }
+                    return Err(unrecognized_argument(
+                        arg_name,
+                        self.arg_to_slot,
+                        self.help_triggers.iter().chain(self.version_triggers.iter()).copied(),
+                    ));
+                }
+            };
 
         self.check_conflict(pos)?;
 
         match self.slots[pos] {
-            ParseStructOption::Flag(ref mut b) => b.set_flag(arg),
+            ParseStructOption::Flag(ref mut b) => {
+                if inline_value.is_some() {
+                    return Err(["Option '", arg_name, "' does not take a value.\n"].concat());
+                }
+                b.set_flag(arg_name)
+            }
             ParseStructOption::Value(ref mut pvs) => {
-                let value = remaining_args
-                    .first()
-                    .ok_or_else(|| ["No value provided for option '", arg, "'.\n"].concat())?;
-                *remaining_args = &remaining_args[1..];
-                pvs.fill_slot(arg, value).map_err(|s| {
-                    ["Error parsing option '", arg, "' with value '", value, "': ", &s, "\n"]
+                let value = match inline_value {
+                    Some(v) => v,
+                    None => remaining_args.first().ok_or_else(|| {
+                        ["No value provided for option '", arg_name, "'.\n"].concat()
+                    })?,
+                };
+                if inline_value.is_none() {
+                    *remaining_args = &remaining_args[1..];
+                }
+                pvs.fill_slot(arg_name, value).map_err(|s| {
+                    ["Error parsing option '", arg_name, "' with value '", value, "': ", &s, "\n"]
                         .concat()
                 })?;
             }

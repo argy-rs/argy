@@ -1659,18 +1659,33 @@ mod fuchsia_commandline_tools_rubric {
         _foo: String,
     }
 
-    /// Do not use an equals punctuation or similar to separate the key and value.
+    /// `--opt=value` and `--opt value` are equivalent for long options.
     #[test]
-    fn keyed_no_equals() {
-        OneOption::from_args(&["cmdname"], &["--foo", "bar"])
+    fn long_option_equals_is_equivalent_to_space_separated() {
+        let with_equals = OneOption::from_args(&["cmdname"], &["--foo=bar"])
+            .expect("Parsing option value using `=` should succeed");
+        let with_space = OneOption::from_args(&["cmdname"], &["--foo", "bar"])
             .expect("Parsing option value as separate arg should succeed");
+        assert_eq!(with_equals._foo, "bar");
+        assert_eq!(with_equals._foo, with_space._foo);
+    }
 
-        let e = OneOption::from_args(&["cmdname"], &["--foo=bar"])
-            .expect_err("Parsing option value using `=` should fail");
-        #[cfg(feature = "fuzzy_search")]
-        assert_eq!(e.output, "Unrecognized argument: \"--foo=bar\". Did you mean \"--foo\"?\n");
-        #[cfg(not(feature = "fuzzy_search"))]
-        assert_eq!(e.output, "Unrecognized argument: --foo=bar\n");
+    /// `--opt=` with an empty inline value yields an empty string value.
+    #[test]
+    fn long_option_equals_with_empty_value() {
+        let parsed = OneOption::from_args(&["cmdname"], &["--foo="])
+            .expect("Parsing an empty inline value should succeed");
+        assert_eq!(parsed._foo, "");
+    }
+
+    /// A switch (flag) does not take a value, so `--flag=value` is an error.
+    #[test]
+    fn switch_rejects_inline_value() {
+        let e = match OneSwitch::from_args(&["cmdname"], &["--switchy=true"]) {
+            Ok(_) => panic!("Parsing a switch with an inline value should fail"),
+            Err(e) => e,
+        };
+        assert_eq!(e.output, "Option '--switchy' does not take a value.\n");
         assert!(e.status.is_err());
     }
 

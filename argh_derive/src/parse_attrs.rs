@@ -21,6 +21,9 @@ pub struct FieldAttrs {
     pub short: Option<syn::LitChar>,
     pub arg_name: Option<syn::LitStr>,
     pub greedy: Option<syn::Path>,
+    /// Whether a greedy positional must be provided at least once.
+    /// Only valid on `#[argh(positional, greedy)]` fields.
+    pub required: bool,
     pub hidden_help: bool,
     pub usage: bool,
     /// Whether the option or switch is global, i.e. also accepted after a
@@ -72,6 +75,7 @@ impl FieldAttrs {
     pub fn parse(errors: &Errors, field: &syn::Field) -> Self {
         let mut this = Self::default();
         let mut global_span = None;
+        let mut required_span = None;
 
         for attr in &field.attrs {
             if is_doc_attr(attr) {
@@ -135,6 +139,9 @@ impl FieldAttrs {
                     );
                 } else if name.is_ident("greedy") {
                     this.greedy = Some(name.clone());
+                } else if name.is_ident("required") {
+                    this.required = true;
+                    required_span = Some(meta.span());
                 } else if name.is_ident("global") {
                     this.global = true;
                     global_span = Some(meta.span());
@@ -148,7 +155,7 @@ impl FieldAttrs {
                         concat!(
                             "Invalid field-level `argh` attribute\n",
                             "Expected one of: `alias`, `arg_name`, `default`, `description`, `from_str_fn`, `global`, ",
-                            "`greedy`, `long`, `option`, `short`, `subcommand`, `switch`, `hidden_help`, `usage`",
+                            "`greedy`, `long`, `option`, `required`, `short`, `subcommand`, `switch`, `hidden_help`, `usage`",
                         ),
                     );
                 }
@@ -193,6 +200,22 @@ impl FieldAttrs {
                     fields",
             ),
             _ => {}
+        }
+
+        if this.required {
+            let is_greedy_positional = matches!(
+                (this.field_type.as_ref().map(|f| f.kind), this.greedy.is_some()),
+                (Some(FieldKind::Positional), true)
+            );
+            if !is_greedy_positional {
+                if let Some(span) = required_span {
+                    errors.err_span(
+                        span,
+                        "`required` may only be specified on `#[argh(positional, greedy)]` \
+                            fields",
+                    );
+                }
+            }
         }
 
         if this.global {

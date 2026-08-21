@@ -1243,6 +1243,44 @@ Options:
 
     #[derive(FromArgs, Debug, PartialEq)]
     /// Woot
+    struct RequiredGreedy {
+        #[argh(positional)]
+        /// fooey
+        a: u32,
+        #[argh(positional, greedy, required)]
+        /// fooey
+        d: Vec<String>,
+    }
+
+    #[test]
+    fn positional_greedy_required() {
+        // Zero values supplied: the required greedy positional must error.
+        assert_error::<RequiredGreedy>(
+            &["5"],
+            r###"Required positional arguments not provided:
+    d
+Usage: cmd [--] <a> d...
+
+Woot
+
+Positional Arguments:
+  a  fooey
+
+Options:
+  --help, help  display usage information
+"###,
+        );
+
+        // One or more values supplied: parses normally.
+        assert_output(&["5", "foo"], RequiredGreedy { a: 5, d: vec!["foo".into()] });
+        assert_output(
+            &["5", "foo", "bar"],
+            RequiredGreedy { a: 5, d: vec!["foo".into(), "bar".into()] },
+        );
+    }
+
+    #[derive(FromArgs, Debug, PartialEq)]
+    /// Woot
     struct LastOptional {
         #[argh(positional)]
         /// fooey

@@ -228,6 +228,63 @@ fn version_trigger_custom_example() {
 }
 
 #[test]
+#[cfg(feature = "help")]
+fn help_render_repository_when_set() {
+    #[derive(FromArgs, Debug)]
+    /// Reach new heights.
+    #[argh(repository)]
+    struct GoUp {
+        /// whether or not to jump
+        #[argh(switch)]
+        _jump: bool,
+    }
+
+    let output = GoUp::from_args(&["cmdname"], &["--help"])
+        .expect_err("help should trigger early exit")
+        .output;
+    // CARGO_PKG_REPOSITORY is set for this crate, so `#[argh(repository)]` must render it.
+    assert!(
+        output.contains("Repository: https://github.com/google/argh"),
+        "repository metadata should render when set:\n{}",
+        output
+    );
+    assert!(
+        !output.contains("Homepage:"),
+        "homepage should be omitted when the attribute is absent:\n{}",
+        output
+    );
+}
+
+#[test]
+#[cfg(feature = "help")]
+fn help_omit_repository_and_homepage_when_empty() {
+    #[derive(FromArgs, Debug)]
+    /// Reach new heights.
+    #[argh(homepage)]
+    struct GoUp {
+        /// whether or not to jump
+        #[argh(switch)]
+        _jump: bool,
+    }
+
+    let output = GoUp::from_args(&["cmdname"], &["--help"])
+        .expect_err("help should trigger early exit")
+        .output;
+    // CARGO_PKG_HOMEPAGE is unset for this crate, so the `#[argh(homepage)]` attribute
+    // must render nothing; repository is absent so it must also be omitted.
+    assert!(
+        !output.contains("Homepage:"),
+        "homepage should be omitted when the Cargo.toml field is empty:\n{}",
+        output
+    );
+    assert!(
+        !output.contains("Repository:"),
+        "repository should be omitted when the attribute is absent:\n{}",
+        output
+    );
+}
+
+#[test]
 fn nested_from_str_example() {
     #[derive(FromArgs)]
     /// Goofy thing.

@@ -94,6 +94,11 @@ pub(crate) fn help(
     let description = require_description(errors, Span::call_site(), &ty_attrs.description, "type");
     format_lit.push_str(&description);
 
+    // Render `repository`/`homepage` from Cargo.toml metadata into help when the
+    // corresponding `#[argh(...)]` attribute is present. The `{metadata}`
+    // placeholder is filled at runtime with the non-empty `CARGO_PKG_*` values.
+    format_lit.push_str("{metadata}");
+
     if has_positional {
         format_lit.push_str(SECTION_SEPARATOR);
         format_lit.push_str("Positional Arguments:");
@@ -168,9 +173,46 @@ pub(crate) fn help(
 
     format_lit.push('\n');
 
+    // Build runtime statements that fill `{metadata}` from `CARGO_PKG_REPOSITORY`
+    // and `CARGO_PKG_HOMEPAGE`, but only for the attributes that are present and
+    // only when the corresponding Cargo.toml field is non-empty.
+    let mut metadata_stmts = Vec::new();
+    for (present, env, label) in [
+        (ty_attrs.repository.is_some(), "CARGO_PKG_REPOSITORY", "Repository:"),
+        (ty_attrs.homepage.is_some(), "CARGO_PKG_HOMEPAGE", "Homepage:"),
+    ] {
+        if present {
+            metadata_stmts.push(quote! {
+                if let Some(v) = ::core::option_env!(#env) {
+                    if !v.is_empty() {
+                        if __first_metadata {
+                            s.push_str("\n\n");
+                            __first_metadata = false;
+                        } else {
+                            s.push('\n');
+                        }
+                        s.push_str(#label);
+                        s.push(' ');
+                        s.push_str(v);
+                    }
+                }
+            });
+        }
+    }
+
+    let metadata = quote! {
+        let __metadata = {
+            let mut s = ::std::string::String::new();
+            let mut __first_metadata = true;
+            #(#metadata_stmts)*
+            s
+        };
+    };
+
     quote! { {
         #subcommand_calculation
-        format!(#format_lit, command_name = #cmd_name_str_array_ident.join(" "), #subcommand_format_arg)
+        #metadata
+        format!(#format_lit, metadata = __metadata, command_name = #cmd_name_str_array_ident.join(" "), #subcommand_format_arg)
     } }
 }
 

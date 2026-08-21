@@ -77,7 +77,7 @@ fn generate_nushell_cmd(out: &mut String, cmd_name: &str, cmd: &CommandInfoWithA
     writeln!(out).unwrap();
 
     // Recurse for subcommands
-    for subcmd in &cmd.commands {
+    for subcmd in cmd.commands.iter().filter(|s| !s.command.hidden) {
         let next_cmd_name = format!("{} {}", cmd_name, subcmd.name);
         generate_nushell_cmd(out, &next_cmd_name, &subcmd.command);
     }

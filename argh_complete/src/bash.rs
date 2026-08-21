@@ -37,7 +37,7 @@ impl Generator for Bash {
         writeln!(&mut out, "            {} | */{})", cmd_name, cmd_name).unwrap();
         writeln!(&mut out, "                cmd=\"{}\"", cmd_name).unwrap();
         writeln!(&mut out, "                ;;").unwrap();
-        for subcmd in &cmd.commands {
+        for subcmd in cmd.commands.iter().filter(|s| !s.command.hidden) {
             // Also need to handle nested subcommands, but bash scripts often hardcode
             // the full path like `cmd_subcmd` depending on how nested it is.
             // Let's keep it simple for a single level first or nested if needed.
@@ -84,7 +84,7 @@ fn generate_bash_dispatch(out: &mut String, full_name: &str, cmd: &CommandInfoWi
     }
 
     let mut cmds = Vec::new();
-    for subcmd in &cmd.commands {
+    for subcmd in cmd.commands.iter().filter(|s| !s.command.hidden) {
         cmds.push(subcmd.name.to_string());
     }
 
@@ -125,7 +125,7 @@ fn generate_bash_dispatch(out: &mut String, full_name: &str, cmd: &CommandInfoWi
 }
 fn generate_all_dispatch(out: &mut String, full_name: &str, cmd: &CommandInfoWithArgs<'_>) {
     generate_bash_dispatch(out, full_name, cmd);
-    for subcmd in &cmd.commands {
+    for subcmd in cmd.commands.iter().filter(|s| !s.command.hidden) {
         let next_full_name = format!("{}_{}", full_name, subcmd.name);
         generate_all_dispatch(out, &next_full_name, &subcmd.command);
     }

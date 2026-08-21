@@ -28,7 +28,7 @@ impl Generator for Zsh {
         writeln!(&mut out).unwrap();
 
         // Generate functions for subcommands
-        for subcmd in &cmd.commands {
+        for subcmd in cmd.commands.iter().filter(|s| !s.command.hidden) {
             generate_zsh_subcmd(&mut out, cmd_name, &subcmd.command);
         }
 
@@ -54,7 +54,7 @@ fn generate_zsh_subcmd(out: &mut String, prefix: &str, cmd: &CommandInfoWithArgs
     writeln!(out, "}}").unwrap();
     writeln!(out).unwrap();
 
-    for subcmd in &cmd.commands {
+    for subcmd in cmd.commands.iter().filter(|s| !s.command.hidden) {
         generate_zsh_subcmd(out, &full_name, &subcmd.command);
     }
 }
@@ -102,7 +102,7 @@ fn generate_zsh_args(out: &mut String, prefix: &str, cmd: &CommandInfoWithArgs<'
         writeln!(out, "{}    (subcmd)", ind).unwrap();
         writeln!(out, "{}        local -a subcommands", ind).unwrap();
         writeln!(out, "{}        subcommands=(", ind).unwrap();
-        for subcmd in &cmd.commands {
+        for subcmd in cmd.commands.iter().filter(|s| !s.command.hidden) {
             let desc = subcmd.command.description.replace("'", "'\\''").replace(":", "\\:");
             writeln!(out, "{}            '{}:{}'", ind, subcmd.name, desc).unwrap();
         }
@@ -116,7 +116,7 @@ fn generate_zsh_args(out: &mut String, prefix: &str, cmd: &CommandInfoWithArgs<'
         writeln!(out, "{}        curcontext=\"${{curcontext%:*:*}}:{}-$cmd\"", ind, prefix)
             .unwrap();
         writeln!(out, "{}        case $cmd in", ind).unwrap();
-        for subcmd in &cmd.commands {
+        for subcmd in cmd.commands.iter().filter(|s| !s.command.hidden) {
             writeln!(out, "{}            ({})", ind, subcmd.name).unwrap();
             writeln!(out, "{}                _{}_{}", ind, prefix, subcmd.name).unwrap();
             writeln!(out, "{}                ;;", ind).unwrap();

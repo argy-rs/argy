@@ -150,6 +150,7 @@ fn impl_arg_info_enum(
                     name: s.name,
                     short: s.short,
                     description: s.description,
+                    hidden: s.hidden,
                     ..Default::default()
                 }
             }).collect()
@@ -359,6 +360,8 @@ fn impl_args_info_data<'a>(
         quote! { &'\0' }
     };
 
+    let hidden = type_attrs.hidden;
+
     quote_spanned! { impl_span =>
         argh::CommandInfoWithArgs {
             name: #subcommand_name,
@@ -370,6 +373,7 @@ fn impl_args_info_data<'a>(
             flags: &[#( #flags, )*],
             commands: #subcommand,
             error_codes: &[#( #error_codes, )*],
+            hidden: #hidden,
         }
     }
 }

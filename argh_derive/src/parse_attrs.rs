@@ -31,6 +31,10 @@ pub struct FieldAttrs {
     pub global: bool,
     /// Alternative long names for an option or switch.
     pub aliases: Vec<syn::LitStr>,
+    /// Long names of other options/switches with which this one is mutually
+    /// exclusive. Passing both is a parse error. Only valid on
+    /// `#[argh(option)]` and `#[argh(switch)]` fields.
+    pub conflicts_with: Vec<syn::LitStr>,
 }
 
 /// The purpose of a particular field on a `#![derive(FromArgs)]` struct.
@@ -95,6 +99,10 @@ impl FieldAttrs {
                     if let Some(m) = errors.expect_meta_name_value(&meta) {
                         parse_attr_multi_string(errors, m, &mut this.aliases);
                     }
+                } else if name.is_ident("conflicts_with") {
+                    if let Some(m) = errors.expect_meta_name_value(&meta) {
+                        parse_attr_multi_string(errors, m, &mut this.conflicts_with);
+                    }
                 } else if name.is_ident("arg_name") {
                     if let Some(m) = errors.expect_meta_name_value(&meta) {
                         this.parse_attr_arg_name(errors, m);
@@ -154,7 +162,7 @@ impl FieldAttrs {
                         &meta,
                         concat!(
                             "Invalid field-level `argh` attribute\n",
-                            "Expected one of: `alias`, `arg_name`, `default`, `description`, `from_str_fn`, `global`, ",
+                            "Expected one of: `alias`, `arg_name`, `conflicts_with`, `default`, `description`, `from_str_fn`, `global`, ",
                             "`greedy`, `long`, `option`, `required`, `short`, `subcommand`, `switch`, `hidden_help`, `usage`",
                         ),
                     );
@@ -224,6 +232,21 @@ impl FieldAttrs {
                 _ => {
                     if let Some(span) = global_span {
                         errors.err_span(span, "`global` may only be specified on `#[argh(option)]` or `#[argh(switch)]` fields");
+                    }
+                }
+            }
+        }
+
+        if !this.conflicts_with.is_empty() {
+            match this.field_type.as_ref().map(|f| f.kind) {
+                Some(FieldKind::Option) | Some(FieldKind::Switch) => {}
+                _ => {
+                    for conflict in &this.conflicts_with {
+                        errors.err(
+                            conflict,
+                            "`conflicts_with` may only be specified on `#[argh(option)]` \
+                             or `#[argh(switch)]` fields",
+                        );
                     }
                 }
             }

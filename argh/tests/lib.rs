@@ -69,6 +69,52 @@ Options:
 }
 
 #[test]
+#[cfg(feature = "help")]
+fn missing_required_subcommand_prints_usage() {
+    #[derive(FromArgs, Debug)]
+    /// Top-level command.
+    struct TopLevel {
+        /// command to execute
+        #[argh(subcommand)]
+        _command: MySubCommandEnum,
+    }
+
+    #[derive(FromArgs, Debug)]
+    #[argh(subcommand)]
+    enum MySubCommandEnum {
+        /// First subcommand.
+        One(SubCommandOne),
+    }
+
+    #[derive(FromArgs, Debug)]
+    /// First subcommand.
+    #[argh(subcommand, name = "one")]
+    struct SubCommandOne {}
+
+    // A command that requires a subcommand, invoked with zero arguments, must
+    // fail with a non-zero status and print the clean top-level usage — the
+    // same text `--help` would produce — with no "must be present" boilerplate
+    // and no full binary path.
+    let e = TopLevel::from_args(&["cmdname"], &[]).expect_err("missing subcommand should fail");
+    assert!(e.status.is_err());
+    assert!(!e.output.contains("must be present"), "{}", e.output);
+    assert!(!e.output.contains('/'), "{}", e.output);
+    assert_eq!(
+        e.output,
+        r###"Usage: cmdname <command> [<args>]
+
+Top-level command.
+
+Options:
+  --help, help  display usage information
+
+Commands:
+  one  First subcommand.
+"###,
+    );
+}
+
+#[test]
 fn generic_example() {
     use std::fmt::Display;
     use std::str::FromStr;
@@ -1510,11 +1556,6 @@ Options:
             exit.output,
             r###"Required options not provided:
     --scribble
-One of the following subcommands must be present:
-    help
-    blow-up
-    grind
-    plugin
 Usage: program-name [-f] [--really-really-really-long-name-for-pat] -s <scribble> [-v] <command> [<args>]
 
 Destroy the contents of <file>.

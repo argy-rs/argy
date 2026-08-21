@@ -402,6 +402,7 @@ fn impl_from_args_struct_from_args<'a>(
     };
 
     let help_triggers = get_help_triggers(type_attrs);
+    let parse_help_triggers = get_parse_help_triggers(type_attrs);
     let version_triggers = get_version_triggers(type_attrs);
 
     let help = if cfg!(feature = "help") {
@@ -428,7 +429,7 @@ fn impl_from_args_struct_from_args<'a>(
                 argh::ParseStructOptions {
                     arg_to_slot: &[ #( #flag_str_to_output_table_map ,)* ],
                     slots: &mut [ #( #flag_output_table, )* ],
-                    help_triggers: &[ #( #help_triggers ),* ],
+                    help_triggers: &[ #( #parse_help_triggers ),* ],
                     version_triggers: &[ #( #version_triggers ),* ],
                     global_options: &[ #( #global_options ),* ],
                 },
@@ -487,12 +488,25 @@ fn get_help_triggers(type_attrs: &TypeAttrs) -> Vec<String> {
     help_triggers
 }
 
-/// get version triggers vector from type_attrs.version_triggers as a [`Vec<String>`]
+/// get the help triggers used for parsing: the display help triggers plus `-h`
+/// when using the default set, so `-h` is accepted as a short form of help like
+/// in clap without changing the rendered help text. Explicitly provided
+/// `help_triggers` are used verbatim for parsing.
+fn get_parse_help_triggers(type_attrs: &TypeAttrs) -> Vec<String> {
+    let mut help_triggers = get_help_triggers(type_attrs);
+    if type_attrs.help_triggers.is_none() && !help_triggers.iter().any(|t| t == "-h") {
+        help_triggers.push("-h".to_owned());
+    }
+    help_triggers
+}
 ///
-/// Defaults to vec!["--version"] if type_attrs.version_triggers is None
+/// Get version triggers vector from type_attrs.version_triggers as a [`Vec<String>`].
+///
+/// Defaults to vec!["--version", "-V"] if type_attrs.version_triggers is None, so
+/// `-V` is accepted as a short form of `--version` like in clap.
 fn get_version_triggers(type_attrs: &TypeAttrs) -> Vec<String> {
     let version_triggers = type_attrs.version_triggers.as_ref().map_or_else(
-        || vec!["--version".to_owned()],
+        || vec!["--version".to_owned(), "-V".to_owned()],
         |s| {
             s.iter()
                 .filter_map(|s| {
@@ -582,6 +596,7 @@ fn impl_from_args_struct_redact_arg_values<'a>(
     };
 
     let help_triggers = get_help_triggers(type_attrs);
+    let parse_help_triggers = get_parse_help_triggers(type_attrs);
     let version_triggers = get_version_triggers(type_attrs);
 
     let help = if cfg!(feature = "help") {
@@ -604,7 +619,7 @@ fn impl_from_args_struct_redact_arg_values<'a>(
                 argh::ParseStructOptions {
                     arg_to_slot: &[ #( #flag_str_to_output_table_map ,)* ],
                     slots: &mut [ #( #flag_output_table, )* ],
-                    help_triggers: &[ #( #help_triggers ),* ],
+                    help_triggers: &[ #( #parse_help_triggers ),* ],
                     version_triggers: &[ #( #version_triggers ),* ],
                     global_options: &[ #( #global_options ),* ],
                 },

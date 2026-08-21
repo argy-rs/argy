@@ -647,18 +647,21 @@ fn dynamic_subcommand_example() {
                     short: &'\0',
                     description: "Third command",
                     aliases: &[],
+                    hidden: false,
                 },
                 &argh::CommandInfo {
                     name: "four",
                     short: &'\0',
                     description: "Fourth command",
                     aliases: &[],
+                    hidden: false,
                 },
                 &argh::CommandInfo {
                     name: "five",
                     short: &'\0',
                     description: "Fifth command",
                     aliases: &[],
+                    hidden: false,
                 },
             ]
         }
@@ -1893,6 +1896,7 @@ Options:
                 short: &'\0',
                 description: "Example dynamic command",
                 aliases: &[],
+                hidden: false,
             }]
         }
 
@@ -2072,6 +2076,51 @@ Options:
 "###,
         );
     }
+}
+
+#[test]
+#[cfg(feature = "help")]
+fn hidden_subcommand_omitted_from_help_but_still_runs() {
+    #[derive(FromArgs, Debug, PartialEq)]
+    /// Top-level command.
+    struct TopLevel {
+        #[argh(subcommand)]
+        cmd: Subcommands,
+    }
+
+    #[derive(FromArgs, Debug, PartialEq)]
+    #[argh(subcommand)]
+    enum Subcommands {
+        Visible(Visible),
+        Secret(Secret),
+    }
+
+    #[derive(FromArgs, Debug, PartialEq)]
+    /// Visible subcommand.
+    #[argh(subcommand, name = "visible")]
+    struct Visible {
+        #[argh(switch)]
+        /// a flag
+        foo: bool,
+    }
+
+    #[derive(FromArgs, Debug, PartialEq)]
+    /// Secret internal subcommand.
+    #[argh(subcommand, name = "secret", hidden)]
+    struct Secret {
+        #[argh(switch)]
+        /// a flag
+        bar: bool,
+    }
+
+    // Help lists the visible subcommand but omits the hidden one.
+    let help = TopLevel::from_args(&["cmd"], &["--help"]).unwrap_err().output;
+    assert!(help.contains("visible"), "visible subcommand should be listed in help");
+    assert!(!help.contains("secret"), "hidden subcommand should be omitted from help");
+
+    // The hidden subcommand is still invocable.
+    let parsed = TopLevel::from_args(&["cmd"], &["secret", "--bar"]).unwrap();
+    assert_eq!(parsed, TopLevel { cmd: Subcommands::Secret(Secret { bar: true }) });
 }
 
 #[test]

@@ -335,6 +335,8 @@ pub struct TypeAttrs {
     pub usage: Option<syn::LitStr>,
     /// Alternative names for a subcommand.
     pub aliases: Vec<syn::LitStr>,
+    /// Whether this subcommand should be hidden from help and completion output.
+    pub hidden: bool,
 }
 
 impl TypeAttrs {
@@ -416,12 +418,16 @@ impl TypeAttrs {
                     if let Some(m) = errors.expect_meta_name_value(&meta) {
                         this.parse_attr_usage(errors, m);
                     }
+                } else if name.is_ident("hidden") {
+                    if errors.expect_meta_word(&meta).is_some() {
+                        this.hidden = true;
+                    }
                 } else {
                     errors.err(
                         &meta,
                         concat!(
                             "Invalid type-level `argh` attribute\n",
-                            "Expected one of: `alias`, `author`, `description`, `error_code`, `example`, `homepage`, ",
+                            "Expected one of: `alias`, `author`, `description`, `error_code`, `example`, `hidden`, `homepage`, ",
                             "`name`, `note`, `repository`, `short`, `subcommand`, `usage`, ",
                             "`help_triggers`, `version_triggers`",
                         ),
@@ -841,6 +847,7 @@ pub fn check_enum_type_attrs(errors: &Errors, type_attrs: &TypeAttrs, type_span:
         version_triggers,
         usage,
         aliases,
+        hidden: _,
     } = type_attrs;
 
     // Ensure that `#[argh(subcommand)]` is present.

@@ -108,3 +108,43 @@ fn test_nushell_generator() {
     assert!(nushell_out.contains("--verbose(-v) # verbose output"));
     assert!(nushell_out.contains("export extern \"mycmd subcmd\" ["));
 }
+
+#[test]
+fn test_hidden_subcommand_omitted_from_completions() {
+    let visible_cmd = CommandInfoWithArgs {
+        name: "visible",
+        description: "a visible command",
+        ..Default::default()
+    };
+    let hidden_cmd = CommandInfoWithArgs {
+        name: "hidden",
+        description: "an internal command",
+        hidden: true,
+        ..Default::default()
+    };
+    let cmd = CommandInfoWithArgs {
+        name: "mycmd",
+        description: "A command",
+        commands: vec![
+            SubCommandInfo { name: "visible", command: visible_cmd },
+            SubCommandInfo { name: "hidden", command: hidden_cmd },
+        ],
+        ..Default::default()
+    };
+
+    let bash_out = crate::bash::Bash::generate("mycmd", &cmd);
+    assert!(bash_out.contains("visible"), "bash should list visible subcommand");
+    assert!(!bash_out.contains("hidden"), "bash should omit hidden subcommand");
+
+    let zsh_out = crate::zsh::Zsh::generate("mycmd", &cmd);
+    assert!(zsh_out.contains("visible"), "zsh should list visible subcommand");
+    assert!(!zsh_out.contains("hidden"), "zsh should omit hidden subcommand");
+
+    let fish_out = crate::fish::Fish::generate("mycmd", &cmd);
+    assert!(fish_out.contains("'visible'"), "fish should list visible subcommand");
+    assert!(!fish_out.contains("'hidden'"), "fish should omit hidden subcommand");
+
+    let nushell_out = crate::nushell::Nushell::generate("mycmd", &cmd);
+    assert!(nushell_out.contains("mycmd visible"), "nushell should list visible subcommand");
+    assert!(!nushell_out.contains("mycmd hidden"), "nushell should omit hidden subcommand");
+}

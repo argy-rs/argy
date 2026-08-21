@@ -731,6 +731,7 @@ fn top_or_sub_cmd_impl(
         let aliases =
             type_attrs.aliases.iter().map(|lit| syn::LitStr::new(&lit.value(), lit.span()));
         let aliases = quote! { &[#( #aliases, )*] };
+        let hidden = type_attrs.hidden;
         quote! {
             #[automatically_derived]
             impl #impl_generics argh::SubCommand for #name #ty_generics #where_clause {
@@ -739,6 +740,7 @@ fn top_or_sub_cmd_impl(
                     short: #short_name,
                     description: #description,
                     aliases: #aliases,
+                    hidden: #hidden,
                 };
             }
         }

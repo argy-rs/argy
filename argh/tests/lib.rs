@@ -285,6 +285,51 @@ fn help_omit_repository_and_homepage_when_empty() {
 }
 
 #[test]
+#[cfg(feature = "help")]
+fn help_render_author_when_set() {
+    #[derive(FromArgs, Debug)]
+    /// Reach new heights.
+    #[argh(author)]
+    struct GoUp {
+        /// whether or not to jump
+        #[argh(switch)]
+        _jump: bool,
+    }
+
+    let output = GoUp::from_args(&["cmdname"], &["--help"])
+        .expect_err("help should trigger early exit")
+        .output;
+    // CARGO_PKG_AUTHORS is set for this crate, so `#[argh(author)]` must render it.
+    assert!(output.contains("Author:"), "author metadata should render when set:\n{}", output);
+    assert!(
+        output.contains("Taylor Cramer"),
+        "author metadata should contain the crate author:\n{}",
+        output
+    );
+}
+
+#[test]
+#[cfg(feature = "help")]
+fn help_omit_author_when_absent() {
+    #[derive(FromArgs, Debug)]
+    /// Reach new heights.
+    struct GoUp {
+        /// whether or not to jump
+        #[argh(switch)]
+        _jump: bool,
+    }
+
+    let output = GoUp::from_args(&["cmdname"], &["--help"])
+        .expect_err("help should trigger early exit")
+        .output;
+    assert!(
+        !output.contains("Author:"),
+        "author should be omitted when the attribute is absent:\n{}",
+        output
+    );
+}
+
+#[test]
 fn nested_from_str_example() {
     #[derive(FromArgs)]
     /// Goofy thing.

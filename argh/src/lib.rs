@@ -278,6 +278,7 @@
 //!                 name: "dynamic_command",
 //!                 short: &'d',
 //!                 description: "A dynamic command",
+//!                 aliases: &[],
 //!             })));
 //!
 //!             commands
@@ -1284,6 +1285,7 @@ impl ParseStructSubCommand<'_> {
     ) -> Result<bool, EarlyExit> {
         for subcommand in self.subcommands.iter().chain(self.dynamic_subcommands.iter()) {
             if subcommand.name == arg
+                || subcommand.aliases.iter().any(|&alias| alias == arg)
                 || arg.chars().count() == 1 && arg.chars().next().unwrap() == *subcommand.short
             {
                 let mut command = cmd_name.to_owned();

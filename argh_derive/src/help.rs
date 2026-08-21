@@ -334,7 +334,7 @@ fn positional_description_format(
     description: &str,
     description_indent: usize,
 ) {
-    let info = argh_shared::CommandInfo { name, description, short: &'\0' };
+    let info = argh_shared::CommandInfo { name, description, short: &'\0', aliases: &[] };
     argh_shared::write_description(out, &info, description_indent);
 }
 
@@ -383,6 +383,6 @@ fn option_description_format(
 ) {
     let name = option_name(short, long_with_leading_dashes);
 
-    let info = argh_shared::CommandInfo { name: &name, description, short: &'\0' };
+    let info = argh_shared::CommandInfo { name: &name, description, short: &'\0', aliases: &[] };
     argh_shared::write_description(out, &info, description_indent);
 }

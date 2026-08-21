@@ -724,6 +724,9 @@ fn top_or_sub_cmd_impl(
         });
         let short_name =
             type_attrs.short.as_ref().map(|c| quote! { &#c }).unwrap_or_else(|| quote! { &'\0' });
+        let aliases =
+            type_attrs.aliases.iter().map(|lit| syn::LitStr::new(&lit.value(), lit.span()));
+        let aliases = quote! { &[#( #aliases, )*] };
         quote! {
             #[automatically_derived]
             impl #impl_generics argh::SubCommand for #name #ty_generics #where_clause {
@@ -731,6 +734,7 @@ fn top_or_sub_cmd_impl(
                     name: #subcommand_name,
                     short: #short_name,
                     description: #description,
+                    aliases: #aliases,
                 };
             }
         }
@@ -955,6 +959,11 @@ fn flag_str_to_output_table_map_entries<'a>(fields: &'a [StructField<'a>]) -> Ve
         }
 
         flag_str_to_output_table_map.push(quote! { (#long_name, #i) });
+
+        for alias in &field.attrs.aliases {
+            let alias = format!("--{}", alias.value());
+            flag_str_to_output_table_map.push(quote! { (#alias, #i) });
+        }
     }
     flag_str_to_output_table_map
 }
@@ -1262,6 +1271,7 @@ fn impl_from_arg_value_enum(
     struct ChoiceVariant<'a> {
         ident: &'a syn::Ident,
         name: syn::LitStr,
+        aliases: Vec<syn::LitStr>,
     }
 
     let variants: Vec<ChoiceVariant<'_>> = de
@@ -1278,7 +1288,7 @@ fn impl_from_arg_value_enum(
                     syn::LitStr::new(&name_str, ident.span())
                 }
             };
-            ChoiceVariant { ident, name }
+            ChoiceVariant { ident, name, aliases: attrs.aliases }
         })
         .collect();
 
@@ -1289,6 +1299,15 @@ fn impl_from_arg_value_enum(
     let name_repeating = std::iter::repeat(name.clone());
     let variant_idents = variants.iter().map(|x| x.ident);
     let variant_names = variants.iter().map(|x| &x.name).collect::<Vec<_>>();
+    // A `|`-separated pattern per variant that accepts the canonical name and any aliases.
+    let variant_match_patterns = variants.iter().map(|variant| {
+        let variant_name = &variant.name;
+        let mut pattern = quote! { #variant_name };
+        for alias in &variant.aliases {
+            pattern = quote! { #pattern | #alias };
+        }
+        pattern
+    });
     let err_literal = {
         let mut err = "expected ".to_string();
         for (i, name) in variant_names.iter().enumerate() {
@@ -1310,7 +1329,7 @@ fn impl_from_arg_value_enum(
             {
                 ::core::result::Result::Ok(match value {
                     #(
-                        #variant_names => #name_repeating::#variant_idents,
+                        #variant_match_patterns => #name_repeating::#variant_idents,
                     )*
                     _ => {
                         return ::core::result::Result::Err(#err_literal.to_owned())

@@ -14,11 +14,18 @@ pub struct CommandInfo<'a> {
     pub short: &'a char,
     /// A short description of the command's functionality.
     pub description: &'a str,
+    /// Alternative names for the command.
+    pub aliases: &'a [&'a str],
 }
 
 impl<'a> Default for CommandInfo<'a> {
     fn default() -> Self {
-        Self { name: Default::default(), short: &'\0', description: Default::default() }
+        Self {
+            name: Default::default(),
+            short: &'\0',
+            description: Default::default(),
+            aliases: &[],
+        }
     }
 }
 

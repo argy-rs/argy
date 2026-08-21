@@ -910,9 +910,24 @@ fn test_dynamic_subcommand() {
     impl argh::DynamicSubCommand for DynamicSubCommandImpl {
         fn commands() -> &'static [&'static argh::CommandInfo] {
             &[
-                &argh::CommandInfo { name: "three", short: &'\0', description: "Third command" },
-                &argh::CommandInfo { name: "four", short: &'\0', description: "Fourth command" },
-                &argh::CommandInfo { name: "five", short: &'\0', description: "Fifth command" },
+                &argh::CommandInfo {
+                    name: "three",
+                    short: &'\0',
+                    description: "Third command",
+                    aliases: &[],
+                },
+                &argh::CommandInfo {
+                    name: "four",
+                    short: &'\0',
+                    description: "Fourth command",
+                    aliases: &[],
+                },
+                &argh::CommandInfo {
+                    name: "five",
+                    short: &'\0',
+                    description: "Fifth command",
+                    aliases: &[],
+                },
             ]
         }
 

@@ -28,6 +28,10 @@ struct ExitCodes {
 #[test]
 fn exit_codes() {
     if let Ok(args) = std::env::var("ARGH_CLI_ARGS") {
+        if args == "utf8" {
+            // Exercise the runtime (invalid-utf8) error path directly.
+            argh::FromEnvError::Utf8("bad".into()).handle();
+        }
         run_cli(&args);
     }
 
@@ -50,6 +54,9 @@ fn exit_codes() {
     assert_eq!(run("--help"), Some(0), "--help should exit 0");
     assert_eq!(run("--version"), Some(0), "--version should exit 0");
     assert_eq!(run("--value 42"), Some(0), "successful parse should exit 0");
+
+    // Runtime (invalid-utf8) error path still exits with status 1.
+    assert_eq!(run("utf8"), Some(1), "runtime error should exit 1");
 }
 
 fn run_cli(args: &str) -> ! {

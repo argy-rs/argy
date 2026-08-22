@@ -814,7 +814,7 @@ impl FromEnvError {
                             "{}\nRun {} --help for more information.",
                             early_exit.output, cmd
                         );
-                        1
+                        2
                     }
                 })
             }
@@ -874,7 +874,7 @@ pub fn cargo_from_env<T: TopLevelCommand>() -> T {
             }
             Err(()) => {
                 eprintln!("{}\nRun --help for more information.", early_exit.output);
-                1
+                2
             }
         })
     })

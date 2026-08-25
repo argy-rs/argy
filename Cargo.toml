@@ -4,16 +4,16 @@ authors = ["Taylor Cramer <cramertj@google.com>", "Benjamin Brittain <bwb@google
 edition = "2018"
 license = "BSD-3-Clause"
 description = "Derive-based argument parsing optimized for code size"
-repository = "https://github.com/google/argh"
+repository = "https://github.com/argy-rs/argy"
 
 [workspace]
 members = [
-    "argh",
-    "argh_derive",
-    "argh_shared",
-    "argh_complete",
+    "argy",
+    "argy_derive",
+    "argy_shared",
+    "argy_complete",
 ]
 
 [workspace.dependencies]
-argh_shared = { version = "0.1.19", path = "argh_shared" }
-argh_derive = { version = "0.1.19", path = "argh_derive" }
+argy_shared = { version = "0.1.19", path = "argy_shared" }
+argy_derive = { version = "0.1.19", path = "argy_derive" }

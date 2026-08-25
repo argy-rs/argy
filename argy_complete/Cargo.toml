@@ -1,0 +1,12 @@
+[package]
+name = "argy_complete"
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Autocompletion generators for argy-based CLIs"
+readme = "README.md"
+
+[dependencies]
+argy_shared.workspace = true

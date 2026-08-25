@@ -1,10 +1,10 @@
-# Argh
-**Argh is an opinionated Derive-based argument parser optimized for code size**
+# Argy
+**Argy is an opinionated Derive-based argument parser optimized for code size**
 
-[![crates.io](https://img.shields.io/crates/v/argh.svg)](https://crates.io/crates/argh)
-[![license](https://img.shields.io/badge/license-BSD3.0-blue.svg)](https://github.com/google/argh/LICENSE)
-[![docs.rs](https://docs.rs/argh/badge.svg)](https://docs.rs/crate/argh/)
-![Argh](https://github.com/google/argh/workflows/Argh/badge.svg)
+[![crates.io](https://img.shields.io/crates/v/argy.svg)](https://crates.io/crates/argy)
+[![license](https://img.shields.io/badge/license-BSD3.0-blue.svg)](https://github.com/argy-rs/argy/LICENSE)
+[![docs.rs](https://docs.rs/argy/badge.svg)](https://docs.rs/crate/argy/)
+![Argy](https://github.com/argy-rs/argy/workflows/Argy/badge.svg)
 
 Derive-based argument parsing optimized for code size and conformance
 to the Fuchsia commandline tools specification
@@ -17,26 +17,26 @@ arguments.
 ## Basic Example
 
 ```rust,no_run
-use argh::FromArgs;
+use argy::FromArgs;
 
 #[derive(FromArgs)]
 /// Reach new heights.
 struct GoUp {
     /// whether or not to jump
-    #[argh(switch, short = 'j')]
+    #[argy(switch, short = 'j')]
     jump: bool,
 
     /// how high to go
-    #[argh(option)]
+    #[argy(option)]
     height: usize,
 
     /// an optional nickname for the pilot
-    #[argh(option)]
+    #[argy(option)]
     pilot_nickname: Option<String>,
 }
 
 fn main() {
-    let up: GoUp = argh::from_env();
+    let up: GoUp = argy::from_env();
 }
 ```
 
@@ -64,11 +64,11 @@ Switches, like `jump`, are optional and will be set to true if provided.
 Options, like `height` and `pilot_nickname`, can be either required,
 optional, or repeating, depending on whether they are contained in an
 `Option` or a `Vec`. Default values can be provided using the
-`#[argh(default = "<your_code_here>")]` attribute, and in this case an
+`#[argy(default = "<your_code_here>")]` attribute, and in this case an
 option is treated as optional.
 
 ```rust
-use argh::FromArgs;
+use argy::FromArgs;
 
 fn default_height() -> usize {
     5
@@ -78,20 +78,20 @@ fn default_height() -> usize {
 /// Reach new heights.
 struct GoUp {
     /// an optional nickname for the pilot
-    #[argh(option)]
+    #[argy(option)]
     pilot_nickname: Option<String>,
 
     /// an optional height
-    #[argh(option, default = "default_height()")]
+    #[argy(option, default = "default_height()")]
     height: usize,
 
     /// an optional direction which is "up" by default
-    #[argh(option, default = "String::from(\"only up\")")]
+    #[argy(option, default = "String::from(\"only up\")")]
     direction: String,
 }
 
 fn main() {
-    let up: GoUp = argh::from_env();
+    let up: GoUp = argy::from_env();
 }
 ```
 
@@ -101,13 +101,13 @@ If more customized parsing is required, you can supply a custom
 `fn(&str) -> Result<T, String>` using the `from_str_fn` attribute:
 
 ```rust
-use argh::FromArgs;
+use argy::FromArgs;
 
 #[derive(FromArgs)]
 /// Goofy thing.
 struct FiveStruct {
     /// always five
-    #[argh(option, from_str_fn(always_five))]
+    #[argy(option, from_str_fn(always_five))]
     five: usize,
 }
 
@@ -116,17 +116,17 @@ fn always_five(_value: &str) -> Result<usize, String> {
 }
 ```
 
-Positional arguments can be declared using `#[argh(positional)]`.
+Positional arguments can be declared using `#[argy(positional)]`.
 These arguments will be parsed in order of their declaration in
 the structure:
 
 ```rust
-use argh::FromArgs;
+use argy::FromArgs;
 
 #[derive(FromArgs, PartialEq, Debug)]
 /// A command with positional arguments.
 struct WithPositional {
-    #[argh(positional)]
+    #[argy(positional)]
     first: String,
 }
 ```
@@ -139,17 +139,17 @@ Subcommands are also supported. To use a subcommand, declare a separate
 over each command:
 
 ```rust
-use argh::FromArgs;
+use argy::FromArgs;
 
 #[derive(FromArgs, PartialEq, Debug)]
 /// Top-level command.
 struct TopLevel {
-    #[argh(subcommand)]
+    #[argy(subcommand)]
     nested: MySubCommandEnum,
 }
 
 #[derive(FromArgs, PartialEq, Debug)]
-#[argh(subcommand)]
+#[argy(subcommand)]
 enum MySubCommandEnum {
     One(SubCommandOne),
     Two(SubCommandTwo),
@@ -157,18 +157,18 @@ enum MySubCommandEnum {
 
 #[derive(FromArgs, PartialEq, Debug)]
 /// First subcommand.
-#[argh(subcommand, name = "one")]
+#[argy(subcommand, name = "one")]
 struct SubCommandOne {
-    #[argh(option)]
+    #[argy(option)]
     /// how many x
     x: usize,
 }
 
 #[derive(FromArgs, PartialEq, Debug)]
 /// Second subcommand.
-#[argh(subcommand, name = "two", short = 't')]
+#[argy(subcommand, name = "two", short = 't')]
 struct SubCommandTwo {
-    #[argh(switch)]
+    #[argy(switch)]
     /// whether to fooey
     fooey: bool,
 }
@@ -181,7 +181,7 @@ Use a `{command_name}` placeholder.
 
 ```rust
 #[derive(FromArgs, Debug)]
-#[argh(
+#[argy(
     description = "{command_name} is a tool to reach new heights.\n\n\
     Start exploring new heights:\n\n\
     \u{00A0} {command_name} --height 5 jump\n\
@@ -193,13 +193,13 @@ Use a `{command_name}` placeholder.
 )]
 pub struct CliArgs {
     /// how high to go
-    #[argh(option)]
+    #[argy(option)]
     height: usize,
     /// an optional nickname for the pilot
-    #[argh(option)]
+    #[argy(option)]
     pilot_nickname: Option<String>,
     /// command to execute
-    #[argh(subcommand)]
+    #[argy(subcommand)]
     pub command: Command,
 }
 ```
@@ -229,17 +229,17 @@ Examples:
   goup --height 5 --pilot-nickname Wes jump
 ```
 
-## How to debug the expanded derive macro for `argh`
+## How to debug the expanded derive macro for `argy`
 
-The `argh::FromArgs` derive macro can be debugged with the [cargo-expand](https://crates.io/crates/cargo-expand) crate.
+The `argy::FromArgs` derive macro can be debugged with the [cargo-expand](https://crates.io/crates/cargo-expand) crate.
 
 ### Expand the derive macro in `examples/simple_example.rs`
 
-See [argh/examples/simple_example.rs](./argh/examples/simple_example.rs) for the example struct we wish to expand.
+See [argy/examples/simple_example.rs](./argy/examples/simple_example.rs) for the example struct we wish to expand.
 
 First, install `cargo-expand` by running `cargo install cargo-expand`. Note this requires the nightly build of Rust.
 
-Once installed, run `cargo expand` with in the `argh` package and you can see the expanded code.
+Once installed, run `cargo expand` with in the `argy` package and you can see the expanded code.
 
 ## Note
 

@@ -1,4 +1,4 @@
-# Workspace developer gates for the argh (argy) workspace.
+# Workspace developer gates for the argy workspace.
 
 test:
     cargo test --workspace --all-features

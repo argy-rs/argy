@@ -1344,22 +1344,26 @@ impl ParseStructOptions<'_> {
 #[allow(clippy::needless_return)]
 fn unrecognized_argument<'a>(
     given: &str,
-    arg_to_slot: &[(&'a str, usize)],
+    #[cfg_attr(not(feature = "fuzzy_search"), allow(unused_variables))] arg_to_slot: &[(
+        &'a str,
+        usize,
+    )],
+    #[cfg_attr(not(feature = "fuzzy_search"), allow(unused_variables))]
     extra_suggestions: impl IntoIterator<Item = &'a str>,
 ) -> String {
-    // get the list of available arguments
-    let available = arg_to_slot
-        .iter()
-        .map(|(name, _pos)| *name)
-        .chain(extra_suggestions)
-        .collect::<Vec<&str>>();
-
-    if available.is_empty() {
-        return format!("Unrecognized argument: \"{given}\"\n");
-    }
-
     #[cfg(feature = "fuzzy_search")]
     {
+        // get the list of available arguments
+        let available = arg_to_slot
+            .iter()
+            .map(|(name, _pos)| *name)
+            .chain(extra_suggestions)
+            .collect::<Vec<&str>>();
+
+        if available.is_empty() {
+            return format!("Unrecognized argument: \"{given}\"\n");
+        }
+
         let suggestions = fuzzy_search_best_n(given, &available, 1);
         return format!(
             "Unrecognized argument: \"{}\". Did you mean \"{}\"?\n",

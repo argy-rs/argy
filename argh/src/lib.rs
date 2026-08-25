@@ -426,6 +426,7 @@ pub trait ArgsInfo {
     fn get_args_info() -> CommandInfoWithArgs;
 
     /// Returns the list of subcommands
+    #[must_use]
     fn get_subcommands() -> Vec<SubCommandInfo> {
         Self::get_args_info().commands
     }
@@ -438,7 +439,7 @@ pub trait FromArgs: Sized {
     /// The first argument `command_name` is the identifier for the current command. In most cases,
     /// users should only pass in a single item for the command name, which typically comes from
     /// the first item from `std::env::args()`. Implementations however should append the
-    /// subcommand name in when recursively calling [FromArgs::from_args] for subcommands. This
+    /// subcommand name in when recursively calling [`FromArgs::from_args`] for subcommands. This
     /// allows `argh` to generate correct subcommand help strings.
     ///
     /// The second argument `args` is the rest of the command line arguments.
@@ -553,6 +554,11 @@ pub trait FromArgs: Sized {
     ///     },
     /// );
     /// ```
+    ///
+    /// # Errors
+    ///
+    /// Returns an [`EarlyExit`] if argument parsing fails or if help or version
+    /// information is requested.
     fn from_args(command_name: &[&str], args: &[&str]) -> Result<Self, EarlyExit>;
 
     /// Get a String with just the argument names, e.g., options, flags, subcommands, etc, but
@@ -562,7 +568,7 @@ pub trait FromArgs: Sized {
     /// The first argument `command_name` is the identifier for the current command. In most cases,
     /// users should only pass in a single item for the command name, which typically comes from
     /// the first item from `std::env::args()`. Implementations however should append the
-    /// subcommand name in when recursively calling [FromArgs::from_args] for subcommands. This
+    /// subcommand name in when recursively calling [`FromArgs::from_args`] for subcommands. This
     /// allows `argh` to generate correct subcommand help strings.
     ///
     /// The second argument `args` is the rest of the command line arguments.
@@ -686,6 +692,11 @@ pub trait FromArgs: Sized {
     ///     }),
     /// );
     /// ```
+    ///
+    /// # Errors
+    ///
+    /// Returns an [`EarlyExit`] if invalid arguments are provided or if help or
+    /// version information is requested.
     fn redact_arg_values(_command_name: &[&str], _args: &[&str]) -> Result<Vec<String>, EarlyExit> {
         Ok(vec!["<<REDACTED>>".into()])
     }
@@ -693,7 +704,7 @@ pub trait FromArgs: Sized {
 
 impl<T: FromArgs> FromArgs for Box<T> {
     fn from_args(command_name: &[&str], args: &[&str]) -> Result<Self, EarlyExit> {
-        T::from_args(command_name, args).map(Box::new)
+        T::from_args(command_name, args).map(Self::new)
     }
 
     fn redact_arg_values(command_name: &[&str], args: &[&str]) -> Result<Vec<String>, EarlyExit> {
@@ -710,6 +721,7 @@ pub trait SubCommands: FromArgs {
     const COMMANDS: &'static [&'static CommandInfo];
 
     /// Get a list of commands that are discovered at runtime.
+    #[must_use]
     fn dynamic_commands() -> &'static [&'static CommandInfo] {
         &[]
     }
@@ -799,23 +811,17 @@ impl FromEnvError {
     /// the user and exiting with the appropriate status code.
     pub fn handle(self) -> ! {
         match self {
-            FromEnvError::Utf8(arg) => {
+            Self::Utf8(arg) => {
                 eprintln!("Invalid utf8: {}", arg.to_string_lossy());
                 std::process::exit(1)
             }
-            FromEnvError::EarlyExit(early_exit, cmd) => {
-                std::process::exit(match early_exit.status {
-                    Ok(()) => {
-                        println!("{}", early_exit.output);
-                        0
-                    }
-                    Err(()) => {
-                        eprintln!(
-                            "{}\nRun {} --help for more information.",
-                            early_exit.output, cmd
-                        );
-                        2
-                    }
+            Self::EarlyExit(early_exit, cmd) => {
+                std::process::exit(if early_exit.status == Ok(()) {
+                    println!("{}", early_exit.output);
+                    0
+                } else {
+                    eprintln!("{}\nRun {} --help for more information.", early_exit.output, cmd);
+                    2
                 })
             }
         }
@@ -829,9 +835,14 @@ impl FromEnvError {
 /// case is usually some form of early exit, which can be performed by calling
 /// [`FromEnvError::handle`]. You can also call [`from_env`] to
 /// automatically handle the error and exit.
+///
+/// # Errors
+///
+/// Returns a [`FromEnvError`] if argument parsing fails or if help or
+/// version information is requested.
 pub fn try_from_env<T: TopLevelCommand>() -> Result<T, FromEnvError> {
     let strings: Vec<String> = std::env::args_os()
-        .map(|s| s.into_string())
+        .map(std::ffi::OsString::into_string)
         .collect::<Result<Vec<_>, _>>()
         .map_err(FromEnvError::Utf8)?;
 
@@ -841,7 +852,7 @@ pub fn try_from_env<T: TopLevelCommand>() -> Result<T, FromEnvError> {
     }
 
     let cmd = cmd(&strings[0], &strings[0]);
-    let strs: Vec<&str> = strings.iter().map(|s| s.as_str()).collect();
+    let strs: Vec<&str> = strings.iter().map(String::as_str).collect();
     T::from_args(&[cmd], &strs[1..]).map_err(|e| FromEnvError::EarlyExit(e, cmd.to_owned()))
 }
 
@@ -850,6 +861,7 @@ pub fn try_from_env<T: TopLevelCommand>() -> Result<T, FromEnvError> {
 /// This function will exit early from the current process if argument parsing
 /// was unsuccessful or if information like `--help` was requested. Error messages will be printed
 /// to stderr, and `--help` output to stdout.
+#[must_use]
 pub fn from_env<T: TopLevelCommand>() -> T {
     try_from_env().unwrap_or_else(|e| e.handle())
 }
@@ -862,20 +874,18 @@ pub fn from_env<T: TopLevelCommand>() -> T {
 /// This function will exit early from the current process if argument parsing
 /// was unsuccessful or if information like `--help` was requested. Error messages will be printed
 /// to stderr, and `--help` output to stdout.
+#[must_use]
 pub fn cargo_from_env<T: TopLevelCommand>() -> T {
     let strings: Vec<String> = std::env::args().collect();
     let cmd = cmd(&strings[1], &strings[1]);
-    let strs: Vec<&str> = strings.iter().map(|s| s.as_str()).collect();
+    let strs: Vec<&str> = strings.iter().map(String::as_str).collect();
     T::from_args(&[cmd], &strs[2..]).unwrap_or_else(|early_exit| {
-        std::process::exit(match early_exit.status {
-            Ok(()) => {
-                println!("{}", early_exit.output);
-                0
-            }
-            Err(()) => {
-                eprintln!("{}\nRun --help for more information.", early_exit.output);
-                2
-            }
+        std::process::exit(if early_exit.status == Ok(()) {
+            println!("{}", early_exit.output);
+            0
+        } else {
+            eprintln!("{}\nRun --help for more information.", early_exit.output);
+            2
         })
     })
 }
@@ -889,6 +899,10 @@ pub fn cargo_from_env<T: TopLevelCommand>() -> T {
 pub trait FromArgValue: Sized {
     /// Construct the type from a commandline value, returning an error string
     /// on failure.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error string if `value` cannot be parsed.
     fn from_arg_value(value: &str) -> Result<Self, String>;
 }
 
@@ -1176,32 +1190,28 @@ impl ParseStructOptions<'_> {
             _ => (arg, None),
         };
 
-        let pos =
-            match self
-                .arg_to_slot
+        let Some(pos) =
+            self.arg_to_slot
                 .iter()
                 .find_map(|&(name, pos)| if name == arg_name { Some(pos) } else { None })
+        else {
+            // A single-dash argument longer than one character that is not
+            // a known option is treated as a cluster of short flags:
+            // `-abc` is parsed as `-a -b -c`. A value-taking short in the
+            // cluster consumes the remainder of the cluster as its value.
+            if inline_value.is_none()
+                && arg.len() > 2
+                && arg.starts_with('-')
+                && !arg.starts_with("--")
             {
-                Some(pos) => pos,
-                None => {
-                    // A single-dash argument longer than one character that is not
-                    // a known option is treated as a cluster of short flags:
-                    // `-abc` is parsed as `-a -b -c`. A value-taking short in the
-                    // cluster consumes the remainder of the cluster as its value.
-                    if inline_value.is_none()
-                        && arg.len() > 2
-                        && arg.starts_with('-')
-                        && !arg.starts_with("--")
-                    {
-                        return self.parse_cluster(arg, remaining_args);
-                    }
-                    return Err(unrecognized_argument(
-                        arg_name,
-                        self.arg_to_slot,
-                        self.help_triggers.iter().chain(self.version_triggers.iter()).copied(),
-                    ));
-                }
-            };
+                return self.parse_cluster(arg, remaining_args);
+            }
+            return Err(unrecognized_argument(
+                arg_name,
+                self.arg_to_slot,
+                self.help_triggers.iter().chain(self.version_triggers.iter()).copied(),
+            ));
+        };
 
         self.check_conflict(pos)?;
 
@@ -1210,7 +1220,7 @@ impl ParseStructOptions<'_> {
                 if inline_value.is_some() {
                     return Err(["Option '", arg_name, "' does not take a value.\n"].concat());
                 }
-                b.set_flag(arg_name)
+                b.set_flag(arg_name);
             }
             ParseStructOption::Value(ref mut pvs) => {
                 let value = match inline_value {
@@ -1269,7 +1279,7 @@ impl ParseStructOptions<'_> {
     /// option, the remainder of the cluster is consumed as that option's value,
     /// falling back to the next argument when the cluster ends at that short.
     fn parse_cluster(&mut self, arg: &str, remaining_args: &mut &[&str]) -> Result<(), String> {
-        let mut chars = arg[1..].chars().peekable();
+        let mut chars = arg[1..].chars();
         while let Some(c) = chars.next() {
             let short = ['-', c].iter().collect::<String>();
             let pos = self
@@ -1329,6 +1339,9 @@ impl ParseStructOptions<'_> {
     }
 }
 
+// The `return` here is required: it lives inside a `#[cfg]`-gated block
+// that is not the function's tail expression.
+#[allow(clippy::needless_return)]
 fn unrecognized_argument<'a>(
     given: &str,
     arg_to_slot: &[(&'a str, usize)],
@@ -1342,7 +1355,7 @@ fn unrecognized_argument<'a>(
         .collect::<Vec<&str>>();
 
     if available.is_empty() {
-        return format!("Unrecognized argument: \"{}\"\n", given);
+        return format!("Unrecognized argument: \"{given}\"\n");
     }
 
     #[cfg(feature = "fuzzy_search")]
@@ -1455,7 +1468,7 @@ impl ParseStructSubCommand<'_> {
     fn matches(&self, arg: &str) -> bool {
         self.subcommands.iter().chain(self.dynamic_subcommands.iter()).any(|subcommand| {
             subcommand.name == arg
-                || subcommand.aliases.iter().any(|&alias| alias == arg)
+                || subcommand.aliases.contains(&arg)
                 || arg.chars().count() == 1 && arg.chars().next().unwrap() == *subcommand.short
         })
     }
@@ -1475,7 +1488,7 @@ impl ParseStructSubCommand<'_> {
             .chain(self.dynamic_subcommands.iter())
             .find(|subcommand| {
                 subcommand.name == arg
-                    || subcommand.aliases.iter().any(|&alias| alias == arg)
+                    || subcommand.aliases.contains(&arg)
                     || arg.chars().count() == 1 && arg.chars().next().unwrap() == *subcommand.short
             })
             .expect("subcommand must have matched in ParseStructSubCommand::matches");
@@ -1532,7 +1545,7 @@ impl MissingRequirements {
     // Add a missing required option.
     #[doc(hidden)]
     pub fn missing_option(&mut self, name: &'static str) {
-        self.options.push(name)
+        self.options.push(name);
     }
 
     // Add a missing required subcommand.
@@ -1544,7 +1557,7 @@ impl MissingRequirements {
     // Add a missing positional argument.
     #[doc(hidden)]
     pub fn missing_positional_arg(&mut self, name: &'static str) {
-        self.positional_args.push(name)
+        self.positional_args.push(name);
     }
 
     // If any missing options or subcommands were provided, returns an error string
@@ -1593,7 +1606,7 @@ mod test {
     #[test]
     fn test_cmd_extraction() {
         let expected = "test_cmd";
-        let path = format!("/tmp/{}", expected);
+        let path = format!("/tmp/{expected}");
         let cmd = cmd(&path, &path);
         assert_eq!(expected, cmd);
     }

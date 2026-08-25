@@ -36,5 +36,5 @@ struct JumpCmd {}
 
 fn main() {
     let args: CliArgs = argh::from_env();
-    println!("{:#?}", args);
+    println!("{args:#?}");
 }

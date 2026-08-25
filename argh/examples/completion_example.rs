@@ -82,38 +82,37 @@ fn main() {
     let args: MyCmd = argh::from_env();
 
     if args.verbose && matches!(args.cmd, Subcommands::Completion(_)) {
-        println!("Doing things verbosely ")
+        println!("Doing things verbosely ");
     }
 
     match args.cmd {
         Subcommands::Completion(cmd) => {
             let cmd_info = MyCmd::get_args_info();
-            let mut command_name = String::new();
-            if let Some(arg0) = std::env::args().next() {
-                command_name = std::path::Path::new(&arg0)
+            let mut command_name = std::env::args().next().map_or_else(String::new, |arg0| {
+                std::path::Path::new(&arg0)
                     .file_name()
                     .unwrap_or_default()
                     .to_string_lossy()
-                    .to_string();
-            }
+                    .to_string()
+            });
             if command_name.is_empty() {
                 command_name = cmd_info.name.to_string();
             }
             match cmd.shell.as_str() {
                 "bash" => {
-                    println!("{}", argh_complete::bash::Bash::generate(&command_name, &cmd_info))
+                    println!("{}", argh_complete::bash::Bash::generate(&command_name, &cmd_info));
                 }
                 "zsh" => {
-                    println!("{}", argh_complete::zsh::Zsh::generate(&command_name, &cmd_info))
+                    println!("{}", argh_complete::zsh::Zsh::generate(&command_name, &cmd_info));
                 }
                 "fish" => {
-                    println!("{}", argh_complete::fish::Fish::generate(&command_name, &cmd_info))
+                    println!("{}", argh_complete::fish::Fish::generate(&command_name, &cmd_info));
                 }
                 "nushell" => {
                     println!(
                         "{}",
                         argh_complete::nushell::Nushell::generate(&command_name, &cmd_info)
-                    )
+                    );
                 }
                 _ => eprintln!("Unsupported shell: {}", cmd.shell),
             }

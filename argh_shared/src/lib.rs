@@ -2,7 +2,7 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
-//! Shared functionality between argh_derive and the argh runtime.
+//! Shared functionality between `argh_derive` and the argh runtime.
 //!
 //! This library is intended only for internal use by these two crates.
 
@@ -21,7 +21,7 @@ pub struct CommandInfo<'a> {
     pub hidden: bool,
 }
 
-impl<'a> Default for CommandInfo<'a> {
+impl Default for CommandInfo<'_> {
     fn default() -> Self {
         Self {
             name: Default::default(),
@@ -60,7 +60,7 @@ pub struct CommandInfoWithArgs<'a> {
     pub hidden: bool,
 }
 
-impl<'a> Default for CommandInfoWithArgs<'a> {
+impl Default for CommandInfoWithArgs<'_> {
     fn default() -> Self {
         Self {
             name: Default::default(),
@@ -69,7 +69,7 @@ impl<'a> Default for CommandInfoWithArgs<'a> {
             examples: Default::default(),
             flags: Default::default(),
             notes: Default::default(),
-            commands: Default::default(),
+            commands: Vec::default(),
             positionals: Default::default(),
             error_codes: Default::default(),
             hidden: false,
@@ -105,7 +105,7 @@ pub struct PositionalInfo<'a> {
 
 /// Information about a subcommand.
 /// Dynamic subcommands do not implement
-/// get_args_info(), so the command field
+/// `get_args_info()`, so the command field
 /// only contains the name and description.
 #[derive(Debug, Default, PartialEq, Eq, Clone)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize))]
@@ -187,7 +187,8 @@ pub fn write_description(out: &mut String, cmd: &CommandInfo<'_>, description_in
     current_line.push_str(cmd.name);
 
     if *cmd.short != '\0' {
-        current_line.push_str(&format!("  {}", cmd.short));
+        current_line.push_str("  ");
+        current_line.push(*cmd.short);
     }
 
     if cmd.description.is_empty() {
@@ -210,12 +211,11 @@ pub fn write_description(out: &mut String, cmd: &CommandInfo<'_>, description_in
             if (char_len(&current_line) + char_len(word) + 1) > WRAP_WIDTH {
                 new_line(&mut current_line, out);
                 break 'inner;
-            } else {
-                // advance the iterator
-                let _ = words.next();
-                current_line.push(' ');
-                current_line.push_str(word);
             }
+            // advance the iterator
+            let _ = words.next();
+            current_line.push(' ');
+            current_line.push_str(word);
         }
     }
     new_line(&mut current_line, out);
@@ -261,5 +261,5 @@ fn char_len(s: &str) -> usize {
 fn new_line(current_line: &mut String, out: &mut String) {
     out.push('\n');
     out.push_str(current_line);
-    current_line.truncate(0);
+    current_line.clear();
 }

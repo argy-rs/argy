@@ -48,5 +48,5 @@ enum Woot {
 
 fn main() {
     let toplevel: TopLevel = argh::from_env();
-    println!("{:#?}", toplevel);
+    println!("{toplevel:#?}");
 }

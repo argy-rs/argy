@@ -12,13 +12,15 @@ use std::fmt::Write;
 pub struct Bash;
 
 impl Generator for Bash {
+    // Escaped `{{...}}` produce bash `${...}` templates, not format args.
+    #[allow(clippy::literal_string_with_formatting_args)]
     fn generate(cmd_name: &str, cmd: &CommandInfoWithArgs<'_>) -> String {
         let mut out = String::new();
 
         // Basic bash completion uses `complete -F _func cmd`
         // We'll generate a recursive function structure for subcommands.
 
-        writeln!(&mut out, "_{}() {{", cmd_name).unwrap();
+        writeln!(&mut out, "_{cmd_name}() {{").unwrap();
         writeln!(&mut out, "    local i cur prev opts cmds").unwrap();
         writeln!(&mut out, "    COMPREPLY=()").unwrap();
         writeln!(&mut out, "    cur=\"${{COMP_WORDS[COMP_CWORD]}}\"").unwrap();
@@ -34,8 +36,8 @@ impl Generator for Bash {
         // Find the current command by traversing from the beginning
         writeln!(&mut out, "    for i in ${{COMP_WORDS[@]}}; do").unwrap();
         writeln!(&mut out, "        case \"${{i}}\" in").unwrap();
-        writeln!(&mut out, "            {} | */{})", cmd_name, cmd_name).unwrap();
-        writeln!(&mut out, "                cmd=\"{}\"", cmd_name).unwrap();
+        writeln!(&mut out, "            {cmd_name} | */{cmd_name})").unwrap();
+        writeln!(&mut out, "                cmd=\"{cmd_name}\"").unwrap();
         writeln!(&mut out, "                ;;").unwrap();
         for subcmd in cmd.commands.iter().filter(|s| !s.command.hidden) {
             // Also need to handle nested subcommands, but bash scripts often hardcode
@@ -53,8 +55,7 @@ impl Generator for Bash {
         writeln!(&mut out, "    esac").unwrap();
         writeln!(&mut out, "}}").unwrap();
         writeln!(&mut out).unwrap();
-        writeln!(&mut out, "complete -F _{} -o bashdefault -o default {}", cmd_name, cmd_name)
-            .unwrap();
+        writeln!(&mut out, "complete -F _{cmd_name} -o bashdefault -o default {cmd_name}").unwrap();
 
         out
     }
@@ -63,15 +64,17 @@ impl Generator for Bash {
 fn generate_bash_case(out: &mut String, prefix: &str, cmd: &CommandInfoWithArgs<'_>) {
     let full_name = format!("{}_{}", prefix, cmd.name);
     writeln!(out, "            {})", cmd.name).unwrap();
-    writeln!(out, "                cmd=\"{}\"", full_name).unwrap();
+    writeln!(out, "                cmd=\"{full_name}\"").unwrap();
     writeln!(out, "                ;;").unwrap();
     for subcmd in &cmd.commands {
         generate_bash_case(out, &full_name, &subcmd.command);
     }
 }
 
+// Escaped `{{...}}` produce bash `${...}` templates, not format args.
+#[allow(clippy::literal_string_with_formatting_args)]
 fn generate_bash_dispatch(out: &mut String, full_name: &str, cmd: &CommandInfoWithArgs<'_>) {
-    writeln!(out, "        {})", full_name).unwrap();
+    writeln!(out, "        {full_name})").unwrap();
 
     let mut opts = Vec::new();
     for flag in cmd.flags {
@@ -79,7 +82,7 @@ fn generate_bash_dispatch(out: &mut String, full_name: &str, cmd: &CommandInfoWi
             opts.push(flag.long.to_string());
         }
         if let Some(short) = flag.short {
-            opts.push(format!("-{}", short));
+            opts.push(format!("-{short}"));
         }
     }
 
@@ -104,7 +107,7 @@ fn generate_bash_dispatch(out: &mut String, full_name: &str, cmd: &CommandInfoWi
                     prev_matches.push(flag.long.to_string());
                 }
                 if let Some(short) = flag.short {
-                    prev_matches.push(format!("-{}", short));
+                    prev_matches.push(format!("-{short}"));
                 }
                 if !prev_matches.is_empty() {
                     writeln!(out, "                {})", prev_matches.join(" | ")).unwrap();

@@ -272,7 +272,7 @@ fn missing_required_argument_prints_usage() {
     assert!(e.status.is_err());
     assert_eq!(
         e.output,
-        r###"Required options not provided:
+        r"Required options not provided:
     --height
 Usage: cmdname --height <height>
 
@@ -281,7 +281,7 @@ Reach new heights.
 Options:
   --height      how high to go
   --help, help  display usage information
-"###,
+",
     );
 }
 
@@ -318,7 +318,7 @@ fn missing_required_subcommand_prints_usage() {
     assert!(!e.output.contains('/'), "{}", e.output);
     assert_eq!(
         e.output,
-        r###"Usage: cmdname <command> [<args>]
+        r"Usage: cmdname <command> [<args>]
 
 Top-level command.
 
@@ -327,7 +327,7 @@ Options:
 
 Commands:
   one  First subcommand.
-"###,
+",
     );
 }
 
@@ -369,6 +369,7 @@ fn custom_from_str_example() {
         five: usize,
     }
 
+    #[allow(clippy::unnecessary_wraps)] // from_str_fn requires Result
     fn always_five(_value: &str) -> Result<usize, String> {
         Ok(5)
     }
@@ -390,14 +391,14 @@ fn help_trigger_example() {
     }
 
     assert_help_string::<Height>(
-        r#"Usage: test_arg_0 --height <height>
+        r"Usage: test_arg_0 --height <height>
 
 Height options
 
 Options:
   --height          how high to go
   -h, --help, help  display usage information
-"#,
+",
     );
 }
 
@@ -557,7 +558,8 @@ fn nested_from_str_example() {
     }
 
     pub mod nested {
-        pub fn always_five(_value: &str) -> Result<usize, String> {
+        #[allow(clippy::unnecessary_wraps)] // from_str_fn requires Result
+        pub const fn always_five(_value: &str) -> Result<usize, String> {
             Ok(5)
         }
     }
@@ -579,6 +581,7 @@ fn method_from_str_example() {
     struct AlwaysFive<T>(T);
 
     impl AlwaysFive<usize> {
+        #[allow(clippy::unnecessary_wraps)] // from_str_fn requires Result
         fn always_five(_value: &str) -> Result<usize, String> {
             Ok(5)
         }
@@ -633,6 +636,7 @@ fn subcommand_example() {
 }
 
 #[test]
+#[allow(clippy::too_many_lines)] // dynamic subcommand test exercises many behaviors
 fn dynamic_subcommand_example() {
     #[derive(PartialEq, Debug)]
     struct DynamicSubCommandImpl {
@@ -676,7 +680,7 @@ fn dynamic_subcommand_example() {
         fn try_from_args(
             command_name: &[&str],
             args: &[&str],
-        ) -> Option<Result<DynamicSubCommandImpl, argh::EarlyExit>> {
+        ) -> Option<Result<Self, argh::EarlyExit>> {
             let command_name = match command_name.last() {
                 Some(x) => *x,
                 None => return Some(Err(argh::EarlyExit::from("No command".to_owned()))),
@@ -685,7 +689,7 @@ fn dynamic_subcommand_example() {
             if args.len() > 1 {
                 Some(Err(argh::EarlyExit::from("Too many arguments".to_owned())))
             } else if let Some(arg) = args.first() {
-                Some(Ok(DynamicSubCommandImpl { got: format!("{} got {:?}", description, arg) }))
+                Some(Ok(Self { got: format!("{description} got {arg:?}") }))
             } else {
                 Some(Err(argh::EarlyExit::from("Not enough arguments".to_owned())))
             }
@@ -778,7 +782,7 @@ fn multiline_doc_comment_description() {
     }
 
     assert_help_string::<Cmd>(
-        r###"Usage: test_arg_0 [--s]
+        r"Usage: test_arg_0 [--s]
 
 Short description
 
@@ -786,7 +790,7 @@ Options:
   --s           a switch with a description that is spread across a number of
                 lines of comments.
   --help, help  display usage information
-"###,
+",
     );
 }
 
@@ -804,14 +808,14 @@ fn escaped_doc_comment_description() {
     }
 
     assert_help_string::<Cmd>(
-        r###"Usage: test_arg_0 [--s]
+        r##"Usage: test_arg_0 [--s]
 
 A \description: !"#$%&'()*+,-./:;<=>?@[\]^_`{|}~\
 
 Options:
   --s           a \description: !"#$%&'()*+,-./:;<=>?@[\]^_`{|}~\
   --help, help  display usage information
-"###,
+"##,
     );
 }
 
@@ -913,6 +917,7 @@ fn assert_help_string<T: FromArgs>(help_str: &str) {
     }
 }
 
+#[allow(clippy::needless_pass_by_value)] // generic test helper; callers pass values
 fn assert_output<T: FromArgs + Debug + PartialEq>(args: &[&str], expected: T) {
     let t = T::from_args(&["cmd"], args).expect("failed to parse");
     assert_eq!(t, expected);
@@ -937,34 +942,35 @@ fn help_description_column_varies_with_longest_name() {
         _a: usize,
     }
     assert_help_string::<ShortOpts>(
-        r###"Usage: test_arg_0 --a <a>
+        r"Usage: test_arg_0 --a <a>
 
 Short options.
 
 Options:
   --a           a value
   --help, help  display usage information
-"###,
+",
     );
 
     // With a longer option name, the description column widens to match,
     // proving the column is derived from the longest name in the group.
     #[derive(FromArgs)]
     /// Long options.
+    #[allow(clippy::items_after_statements)] // test defines a type mid-function
     struct LongOpts {
         #[argh(option)]
         /// a value
         _a_very_long_option_name: usize,
     }
     assert_help_string::<LongOpts>(
-        r###"Usage: test_arg_0 --a-very-long-option-name <a-very-long-option-name>
+        r"Usage: test_arg_0 --a-very-long-option-name <a-very-long-option-name>
 
 Long options.
 
 Options:
   --a-very-long-option-name  a value
   --help, help               display usage information
-"###,
+",
     );
 }
 
@@ -984,8 +990,8 @@ mod options {
         assert_output(&["-n", "5"], Parsed { n: 5 });
         assert_error::<Parsed>(
             &["-n", "x"],
-            r###"Error parsing option '-n' with value 'x': invalid digit found in string
-"###,
+            r"Error parsing option '-n' with value 'x': invalid digit found in string
+",
         );
     }
 
@@ -1001,14 +1007,14 @@ mod options {
     #[cfg(feature = "help")]
     fn repeating() {
         assert_help_string::<Repeating>(
-            r###"Usage: test_arg_0 [-n <n...>]
+            r"Usage: test_arg_0 [-n <n...>]
 
 Woot
 
 Options:
   -n, --n       fooey
   --help, help  display usage information
-"###,
+",
         );
     }
 
@@ -1024,14 +1030,14 @@ Options:
     #[cfg(feature = "help")]
     fn with_arg_name() {
         assert_help_string::<WithArgName>(
-            r###"Usage: test_arg_0 [--option-name <name>]
+            r"Usage: test_arg_0 [--option-name <name>]
 
 Woot
 
 Options:
   --option-name  fooey
   --help, help   display usage information
-"###,
+",
         );
     }
 
@@ -1073,7 +1079,7 @@ Options:
         assert_output(
             &["--choice2", "first_choice"],
             WithChoices { choice1: TwoChoices::Chao, choice2: ThreeChoices::FirstChoice },
-        )
+        );
     }
 
     #[test]
@@ -1081,7 +1087,7 @@ Options:
         assert_output(
             &["--choice2", "first_choice", "--choice1", "hola"],
             WithChoices { choice1: TwoChoices::Hola, choice2: ThreeChoices::FirstChoice },
-        )
+        );
     }
 
     #[test]
@@ -1089,23 +1095,23 @@ Options:
         assert_output(
             &["--choice2", "に", "--choice1", "hola"],
             WithChoices { choice1: TwoChoices::Hola, choice2: ThreeChoices::Two },
-        )
+        );
     }
 
     #[test]
     fn invalid_choice() {
         assert_error::<WithChoices>(
             &["--choice2", "something"],
-            r###"Error parsing option '--choice2' with value 'something': expected "first_choice", "に" or "three"
-"###,
-        )
+            r#"Error parsing option '--choice2' with value 'something': expected "first_choice", "に" or "three"
+"#,
+        );
     }
 
     #[test]
     #[cfg(feature = "help")]
     fn choice_help() {
         assert_help_string::<WithChoices>(
-            r###"Usage: test_arg_0 [--choice1 <choice1>] --choice2 <choice2>
+            r"Usage: test_arg_0 [--choice1 <choice1>] --choice2 <choice2>
 
 Test choices
 
@@ -1113,7 +1119,7 @@ Options:
   --choice1     first choice with a default
   --choice2     second choice.
   --help, help  display usage information
-"###,
+",
         );
     }
 }
@@ -1142,7 +1148,7 @@ mod positional {
             LastRepeating { a: 5, b: vec!["foo".into(), "bar".into()] },
         );
         assert_help_string::<LastRepeating>(
-            r###"Usage: test_arg_0 [--] <a> [<b...>]
+            r"Usage: test_arg_0 [--] <a> [<b...>]
 
 Woot
 
@@ -1152,7 +1158,7 @@ Positional Arguments:
 
 Options:
   --help, help  display usage information
-"###,
+",
         );
     }
 
@@ -1226,7 +1232,7 @@ Options:
             },
         );
         assert_help_string::<LastRepeatingGreedy>(
-            r###"Usage: test_arg_0 [--b] [--c <c>] [--] <a> [d...]
+            r"Usage: test_arg_0 [--b] [--c <c>] [--] <a> [d...]
 
 Woot
 
@@ -1237,7 +1243,7 @@ Options:
   --b           woo
   --c           stuff
   --help, help  display usage information
-"###,
+",
         );
     }
 
@@ -1257,7 +1263,7 @@ Options:
         // Zero values supplied: the required greedy positional must error.
         assert_error::<RequiredGreedy>(
             &["5"],
-            r###"Required positional arguments not provided:
+            r"Required positional arguments not provided:
     d
 Usage: cmd [--] <a> d...
 
@@ -1268,7 +1274,7 @@ Positional Arguments:
 
 Options:
   --help, help  display usage information
-"###,
+",
         );
 
         // One or more values supplied: parses normally.
@@ -1331,7 +1337,7 @@ Options:
         assert_output(&["5", "6"], LastRequired { a: 5, b: 6 });
         assert_error::<LastRequired>(
             &[],
-            r###"Required positional arguments not provided:
+            r"Required positional arguments not provided:
     a
     b
 Usage: cmd [--] <a> <b>
@@ -1344,11 +1350,11 @@ Positional Arguments:
 
 Options:
   --help, help  display usage information
-"###,
+",
         );
         assert_error::<LastRequired>(
             &["5"],
-            r###"Required positional arguments not provided:
+            r"Required positional arguments not provided:
     b
 Usage: cmd [--] <a> <b>
 
@@ -1360,7 +1366,7 @@ Positional Arguments:
 
 Options:
   --help, help  display usage information
-"###,
+",
         );
     }
 
@@ -1377,8 +1383,8 @@ Options:
         assert_output(&["5"], Parsed { n: 5 });
         assert_error::<Parsed>(
             &["x"],
-            r###"Error parsing positional argument 'n' with value 'x': invalid digit found in string
-"###,
+            r"Error parsing positional argument 'n' with value 'x': invalid digit found in string
+",
         );
     }
 
@@ -1399,7 +1405,7 @@ Options:
 
         assert_error::<WithOption>(
             &[],
-            r###"Required positional arguments not provided:
+            r"Required positional arguments not provided:
     a
 Required options not provided:
     --b
@@ -1413,7 +1419,7 @@ Positional Arguments:
 Options:
   --b           fooey
   --help, help  display usage information
-"###,
+",
         );
     }
 
@@ -1433,6 +1439,7 @@ Options:
 
     #[derive(FromArgs, Debug, PartialEq)]
     #[argh(subcommand, name = "a")]
+    #[allow(clippy::doc_markdown)] // doc text is rendered verbatim in help output
     /// Subcommand of positional::WithSubcommand.
     struct Subcommand {
         #[argh(positional)]
@@ -1456,7 +1463,7 @@ Options:
 
         assert_error::<WithSubcommand>(
             &["a", "a", "a"],
-            r###"Required positional arguments not provided:
+            r"Required positional arguments not provided:
     a
 Usage: cmd <a> [<c...>] <command> [<args>]
 
@@ -1471,7 +1478,7 @@ Options:
 
 Commands:
   a  Subcommand of positional::WithSubcommand.
-"###,
+",
         );
 
         assert_output(
@@ -1498,7 +1505,7 @@ Commands:
 
         assert_error::<Underscores>(
             &[],
-            r###"Required positional arguments not provided:
+            r"Required positional arguments not provided:
     a
 Usage: cmd [--] <a>
 
@@ -1509,14 +1516,14 @@ Positional Arguments:
 
 Options:
   --help, help  display usage information
-"###,
+",
         );
     }
 }
 
 /// Tests derived from
-/// https://fuchsia.dev/fuchsia-src/development/api/cli and
-/// https://fuchsia.dev/fuchsia-src/development/api/cli_help
+/// <https://fuchsia.dev/fuchsia-src/development/api/cli> and
+/// <https://fuchsia.dev/fuchsia-src/development/api/cli_help>
 mod fuchsia_commandline_tools_rubric {
     use super::*;
 
@@ -1581,10 +1588,10 @@ mod fuchsia_commandline_tools_rubric {
     struct TwoSwitches {
         #[argh(switch, short = 'a')]
         /// a
-        _a: bool,
+        a: bool,
         #[argh(switch, short = 'b')]
         /// b
-        _b: bool,
+        b: bool,
     }
 
     /// Switches may be clustered: `-ab` behaves like `-a -b`.
@@ -1592,9 +1599,9 @@ mod fuchsia_commandline_tools_rubric {
     fn switches_can_be_clustered() {
         let clustered = TwoSwitches::from_args(&["cmdname"], &["-ab"]).expect("clustered -ab");
         let separate = TwoSwitches::from_args(&["cmdname"], &["-a", "-b"]).expect("separate -a -b");
-        assert!(clustered._a && clustered._b);
-        assert_eq!(clustered._a, separate._a);
-        assert_eq!(clustered._b, separate._b);
+        assert!(clustered.a && clustered.b);
+        assert_eq!(clustered.a, separate.a);
+        assert_eq!(clustered.b, separate.b);
     }
 
     #[derive(FromArgs, Debug)]
@@ -1602,13 +1609,13 @@ mod fuchsia_commandline_tools_rubric {
     struct ThreeSwitches {
         #[argh(switch, short = 'a')]
         /// a
-        _a: bool,
+        a: bool,
         #[argh(switch, short = 'b')]
         /// b
-        _b: bool,
+        b: bool,
         #[argh(switch, short = 'c')]
         /// c
-        _c: bool,
+        c: bool,
     }
 
     /// A cluster of three switches behaves identically to the same switches
@@ -1618,10 +1625,10 @@ mod fuchsia_commandline_tools_rubric {
         let clustered = ThreeSwitches::from_args(&["cmdname"], &["-abc"]).expect("clustered -abc");
         let separate =
             ThreeSwitches::from_args(&["cmdname"], &["-a", "-b", "-c"]).expect("separate -a -b -c");
-        assert!(clustered._a && clustered._b && clustered._c);
-        assert_eq!(clustered._a, separate._a);
-        assert_eq!(clustered._b, separate._b);
-        assert_eq!(clustered._c, separate._c);
+        assert!(clustered.a && clustered.b && clustered.c);
+        assert_eq!(clustered.a, separate.a);
+        assert_eq!(clustered.b, separate.b);
+        assert_eq!(clustered.c, separate.c);
     }
 
     #[derive(FromArgs, Debug)]
@@ -1661,6 +1668,7 @@ mod fuchsia_commandline_tools_rubric {
 
     /// `--opt=value` and `--opt value` are equivalent for long options.
     #[test]
+    #[allow(clippy::used_underscore_binding)] // `_foo` field keeps the `--foo` option name
     fn long_option_equals_is_equivalent_to_space_separated() {
         let with_equals = OneOption::from_args(&["cmdname"], &["--foo=bar"])
             .expect("Parsing option value using `=` should succeed");
@@ -1672,6 +1680,7 @@ mod fuchsia_commandline_tools_rubric {
 
     /// `--opt=` with an empty inline value yields an empty string value.
     #[test]
+    #[allow(clippy::used_underscore_binding)] // `_foo` field keeps the `--foo` option name
     fn long_option_equals_with_empty_value() {
         let parsed = OneOption::from_args(&["cmdname"], &["--foo="])
             .expect("Parsing an empty inline value should succeed");
@@ -1681,9 +1690,8 @@ mod fuchsia_commandline_tools_rubric {
     /// A switch (flag) does not take a value, so `--flag=value` is an error.
     #[test]
     fn switch_rejects_inline_value() {
-        let e = match OneSwitch::from_args(&["cmdname"], &["--switchy=true"]) {
-            Ok(_) => panic!("Parsing a switch with an inline value should fail"),
-            Err(e) => e,
+        let Err(e) = OneSwitch::from_args(&["cmdname"], &["--switchy=true"]) else {
+            panic!("Parsing a switch with an inline value should fail")
         };
         assert_eq!(e.output, "Option '--switchy' does not take a value.\n");
         assert!(e.status.is_err());
@@ -1806,7 +1814,7 @@ mod fuchsia_commandline_tools_rubric {
     }
 
     #[cfg(feature = "help")]
-    const MAIN_HELP_STRING: &str = r###"Usage: cmdname <command> [<args>]
+    const MAIN_HELP_STRING: &str = r"Usage: cmdname <command> [<args>]
 
 A type for testing `--help`/`help`
 
@@ -1815,10 +1823,10 @@ Options:
 
 Commands:
   first  First subcommmand for testing `help`.
-"###;
+";
 
     #[cfg(feature = "help")]
-    const FIRST_HELP_STRING: &str = r###"Usage: cmdname first <command> [<args>]
+    const FIRST_HELP_STRING: &str = r"Usage: cmdname first <command> [<args>]
 
 First subcommmand for testing `help`.
 
@@ -1827,21 +1835,21 @@ Options:
 
 Commands:
   second  Second subcommand for testing `help`.
-"###;
+";
 
     #[cfg(feature = "help")]
-    const SECOND_HELP_STRING: &str = r###"Usage: cmdname first second
+    const SECOND_HELP_STRING: &str = r"Usage: cmdname first second
 
 Second subcommand for testing `help`.
 
 Options:
   --help, help  display usage information
-"###;
+";
 
     #[test]
     #[cfg(feature = "help")]
     fn help_keyword_main() {
-        expect_help(&["help"], MAIN_HELP_STRING)
+        expect_help(&["help"], MAIN_HELP_STRING);
     }
 
     #[test]
@@ -1946,6 +1954,7 @@ Options:
         #[argh(option, short = 's')]
         scribble: String,
 
+        #[allow(clippy::doc_markdown)] // doc text is rendered verbatim in help output
         /// say more. Defaults to $BLAST_VERBOSE.
         #[argh(switch, short = 'v')]
         verbose: bool,
@@ -2006,15 +2015,15 @@ Options:
         fn try_from_args(
             command_name: &[&str],
             args: &[&str],
-        ) -> Option<Result<HelpExamplePlugin, argh::EarlyExit>> {
+        ) -> Option<Result<Self, argh::EarlyExit>> {
             if command_name.last() != Some(&"plugin") {
                 None
             } else if args.len() > 1 {
                 Some(Err(argh::EarlyExit::from("Too many arguments".to_owned())))
             } else if let Some(arg) = args.first() {
-                Some(Ok(HelpExamplePlugin { got: format!("plugin got {:?}", arg) }))
+                Some(Ok(Self { got: format!("plugin got {arg:?}") }))
             } else {
-                Some(Ok(HelpExamplePlugin { got: "plugin got no argument".to_owned() }))
+                Some(Ok(Self { got: "plugin got no argument".to_owned() }))
             }
         }
     }
@@ -2045,7 +2054,7 @@ Options:
         exit.status.unwrap_err();
         assert_eq!(
             exit.output,
-            r###"Required options not provided:
+            r"Required options not provided:
     --scribble
 Usage: program-name [-f] [--really-really-really-long-name-for-pat] -s <scribble> [-v] <command> [<args>]
 
@@ -2076,7 +2085,7 @@ Notes:
 Error codes:
   2 The blade is too dull.
   3 Out of fuel.
-"###,
+",
         );
     }
 
@@ -2084,7 +2093,7 @@ Error codes:
     #[cfg(feature = "help")]
     fn help_example() {
         assert_help_string::<HelpExample>(
-            r###"Usage: test_arg_0 [-f] [--really-really-really-long-name-for-pat] -s <scribble> [-v] <command> [<args>]
+            r"Usage: test_arg_0 [-f] [--really-really-really-long-name-for-pat] -s <scribble> [-v] <command> [<args>]
 
 Destroy the contents of <file>.
 
@@ -2113,7 +2122,7 @@ Notes:
 Error codes:
   2 The blade is too dull.
   3 Out of fuel.
-"###,
+",
         );
     }
 
@@ -2129,7 +2138,7 @@ Error codes:
     #[cfg(feature = "help")]
     fn with_arg_name() {
         assert_help_string::<WithArgName>(
-            r###"Usage: test_arg_0 [--] <name>
+            r"Usage: test_arg_0 [--] <name>
 
 Destroy the contents of <file>.
 
@@ -2138,7 +2147,7 @@ Positional Arguments:
 
 Options:
   --help, help  display usage information
-"###,
+",
         );
     }
 
@@ -2160,7 +2169,7 @@ Options:
         }
 
         assert_help_string::<Cmd>(
-            r###"Usage: test_arg_0 [--] <two>
+            r"Usage: test_arg_0 [--] <two>
 
 Short description
 
@@ -2169,7 +2178,7 @@ Positional Arguments:
 
 Options:
   --help, help  display usage information
-"###,
+",
         );
     }
 }
@@ -2574,14 +2583,14 @@ fn redact_arg_values_produces_help() {
     assert_eq!(
         Repeating::redact_arg_values(&["program-name"], &["--help"]),
         Err(argh::EarlyExit {
-            output: r###"Usage: program-name [-n <n...>]
+            output: r"Usage: program-name [-n <n...>]
 
 Woot
 
 Options:
   -n, --n       fooey
   --help, help  display usage information
-"###
+"
             .to_owned(),
             status: Ok(()),
         }),
@@ -2709,14 +2718,14 @@ fn override_usage() {
     }
 
     assert_help_string::<Height>(
-        r#"Usage: test_arg_0 USAGE LINE
+        r"Usage: test_arg_0 USAGE LINE
 
 Height options
 
 Options:
   --height          how high to go
   -h, --help, help  display usage information
-"#,
+",
     );
 }
 
@@ -2738,7 +2747,7 @@ fn customize_usage() {
     }
 
     assert_help_string::<Height>(
-        r#"Usage: test_arg_0 --height <height>
+        r"Usage: test_arg_0 --height <height>
 
 Height options
 
@@ -2746,7 +2755,7 @@ Options:
   --height          how high to go
   --hidden          hidden from usage
   -h, --help, help  display usage information
-"#,
+",
     );
 }
 

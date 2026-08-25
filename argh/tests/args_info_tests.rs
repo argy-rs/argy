@@ -10,7 +10,7 @@ use argh::{
 
 fn assert_args_info<T: ArgsInfo>(expected: &CommandInfoWithArgs) {
     let actual_value = T::get_args_info();
-    assert_eq!(expected, &actual_value)
+    assert_eq!(expected, &actual_value);
 }
 
 const HELP_FLAG: FlagInfo<'_> = FlagInfo {
@@ -374,22 +374,22 @@ fn args_info_test_notes_examples_errors() {
     #[derive(FromArgs, ArgsInfo)]
     /// Command with Examples and usage Notes, including error codes.
     #[argh(
-        note = r##"
+        note = r#"
     These usage notes appear for {command_name} and how to best use it.
     The formatting should be preserved.
     one
     two
     three then a blank
     
-    and one last line with "quoted text"."##,
-        example = r##"
+    and one last line with "quoted text"."#,
+        example = r#"
     Use the command with 1 file:
     `{command_name} /path/to/file`
     Use it with a "wildcard":
     `{command_name} /path/to/*`
      a blank line
     
-    and one last line with "quoted text"."##,
+    and one last line with "quoted text"."#,
         error_code(0, "Success"),
         error_code(1, "General Error"),
         error_code(2, "Some error with \"quotes\"")
@@ -422,6 +422,7 @@ fn args_info_test_notes_examples_errors() {
 }
 
 #[test]
+#[allow(clippy::too_many_lines)] // long test exercising many subcommand args_info outputs
 fn args_info_test_subcommands() {
     #[allow(dead_code)]
     #[derive(FromArgs, ArgsInfo)]
@@ -716,6 +717,7 @@ fn args_info_test_example() {
         #[argh(option, short = 's')]
         scribble: String,
 
+        #[allow(clippy::doc_markdown)] // doc text is rendered verbatim in args_info output
         /// say more. Defaults to $BLAST_VERBOSE.
         #[argh(switch, short = 'v')]
         verbose: bool,
@@ -902,6 +904,7 @@ fn hidden_help_attribute() {
 }
 
 #[test]
+#[allow(clippy::too_many_lines)] // long test exercising dynamic subcommand args_info outputs
 fn test_dynamic_subcommand() {
     #[derive(PartialEq, Debug)]
     struct DynamicSubCommandImpl {
@@ -945,7 +948,7 @@ fn test_dynamic_subcommand() {
         fn try_from_args(
             command_name: &[&str],
             args: &[&str],
-        ) -> Option<Result<DynamicSubCommandImpl, argh::EarlyExit>> {
+        ) -> Option<Result<Self, argh::EarlyExit>> {
             let command_name = match command_name.last() {
                 Some(x) => *x,
                 None => return Some(Err(argh::EarlyExit::from("No command".to_owned()))),
@@ -954,7 +957,7 @@ fn test_dynamic_subcommand() {
             if args.len() > 1 {
                 Some(Err(argh::EarlyExit::from("Too many arguments".to_owned())))
             } else if let Some(arg) = args.first() {
-                Some(Ok(DynamicSubCommandImpl { got: format!("{} got {:?}", description, arg) }))
+                Some(Ok(Self { got: format!("{description} got {arg:?}") }))
             } else {
                 Some(Err(argh::EarlyExit::from("Not enough arguments".to_owned())))
             }
@@ -1070,7 +1073,7 @@ fn test_dynamic_subcommand() {
             },
         ],
         ..Default::default()
-    })
+    });
 }
 
 #[test]

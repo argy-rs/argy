@@ -12,6 +12,8 @@ use {
 
 /// Attributes applied to a field of a `#![derive(FromArgs)]` struct.
 #[derive(Default)]
+// Allow: many boolean config flags on this struct; refactoring would hurt readability.
+#[allow(clippy::struct_excessive_bools)]
 pub struct FieldAttrs {
     pub default: Option<syn::LitStr>,
     pub description: Option<Description>,
@@ -76,6 +78,8 @@ pub struct Description {
 }
 
 impl FieldAttrs {
+    // Allow: this parse fn must handle every field-level argh attribute.
+    #[allow(clippy::too_many_lines)]
     pub fn parse(errors: &Errors, field: &syn::Field) -> Self {
         let mut this = Self::default();
         let mut global_span = None;
@@ -87,9 +91,7 @@ impl FieldAttrs {
                 continue;
             }
 
-            let ml = if let Some(ml) = argh_attr_to_meta_list(errors, attr) {
-                ml
-            } else {
+            let Some(ml) = argh_attr_to_meta_list(errors, attr) else {
                 continue;
             };
 
@@ -183,7 +185,7 @@ impl FieldAttrs {
 
         if !this.aliases.is_empty() {
             match this.field_type.as_ref().map(|f| f.kind) {
-                Some(FieldKind::Option) | Some(FieldKind::Switch) => {
+                Some(FieldKind::Option | FieldKind::Switch) => {
                     for alias in &this.aliases {
                         check_long_name(errors, alias, &alias.value());
                     }
@@ -228,7 +230,7 @@ impl FieldAttrs {
 
         if this.global {
             match this.field_type.as_ref().map(|f| f.kind) {
-                Some(FieldKind::Option) | Some(FieldKind::Switch) => {}
+                Some(FieldKind::Option | FieldKind::Switch) => {}
                 _ => {
                     if let Some(span) = global_span {
                         errors.err_span(span, "`global` may only be specified on `#[argh(option)]` or `#[argh(switch)]` fields");
@@ -239,7 +241,7 @@ impl FieldAttrs {
 
         if !this.conflicts_with.is_empty() {
             match this.field_type.as_ref().map(|f| f.kind) {
-                Some(FieldKind::Option) | Some(FieldKind::Switch) => {}
+                Some(FieldKind::Option | FieldKind::Switch) => {}
                 _ => {
                     for conflict in &this.conflicts_with {
                         errors.err(
@@ -260,7 +262,7 @@ impl FieldAttrs {
     }
 
     fn parse_attr_from_str_fn(&mut self, errors: &Errors, m: &syn::MetaList) {
-        parse_attr_fn_name(errors, m, "from_str_fn", &mut self.from_str_fn)
+        parse_attr_fn_name(errors, m, "from_str_fn", &mut self.from_str_fn);
     }
 
     fn parse_attr_default(&mut self, errors: &Errors, m: &syn::MetaNameValue) {
@@ -290,7 +292,7 @@ impl FieldAttrs {
     }
 }
 
-pub(crate) fn check_long_name(errors: &Errors, spanned: &impl syn::spanned::Spanned, value: &str) {
+pub fn check_long_name(errors: &Errors, spanned: &impl syn::spanned::Spanned, value: &str) {
     if !value.is_ascii() {
         errors.err(spanned, "Long names must be ASCII");
     }
@@ -388,7 +390,7 @@ pub struct TypeAttrs {
 impl TypeAttrs {
     /// Parse top-level `#[argh(...)]` attributes
     pub fn parse(errors: &Errors, derive_input: &syn::DeriveInput) -> Self {
-        let mut this = TypeAttrs::default();
+        let mut this = Self::default();
 
         for attr in &derive_input.attrs {
             if is_doc_attr(attr) {
@@ -396,9 +398,7 @@ impl TypeAttrs {
                 continue;
             }
 
-            let ml = if let Some(ml) = argh_attr_to_meta_list(errors, attr) {
-                ml
-            } else {
+            let Some(ml) = argh_attr_to_meta_list(errors, attr) else {
                 continue;
             };
 
@@ -506,10 +506,10 @@ impl TypeAttrs {
                 Entry::Occupied(previous) => {
                     let previous_index = *previous.get();
                     let (previous_lit_int, _previous_lit_str) = &self.error_codes[previous_index];
-                    errors.err(lit_int, &format!("Duplicate error code {}", value));
+                    errors.err(lit_int, &format!("Duplicate error code {value}"));
                     errors.err(
                         previous_lit_int,
-                        &format!("Error code {} previously defined here", value),
+                        &format!("Error code {value} previously defined here"),
                     );
                 }
                 Entry::Vacant(slot) => {
@@ -534,7 +534,7 @@ impl TypeAttrs {
     }
 
     fn parse_attr_example(&mut self, errors: &Errors, m: &syn::MetaNameValue) {
-        parse_attr_multi_string(errors, m, &mut self.examples)
+        parse_attr_multi_string(errors, m, &mut self.examples);
     }
 
     fn parse_attr_name(&mut self, errors: &Errors, m: &syn::MetaNameValue) {
@@ -558,7 +558,7 @@ impl TypeAttrs {
     }
 
     fn parse_attr_note(&mut self, errors: &Errors, m: &syn::MetaNameValue) {
-        parse_attr_multi_string(errors, m, &mut self.notes)
+        parse_attr_multi_string(errors, m, &mut self.notes);
     }
 
     fn parse_attr_subcommand(&mut self, errors: &Errors, ident: &syn::Ident) {
@@ -594,7 +594,7 @@ impl TypeAttrs {
     }
 
     // get the list of arguments that trigger printing of the help message as a vector of strings (help_arguments("-h", "--help", "help"))
-    fn parse_help_triggers(m: &syn::MetaList, errors: &Errors, this: &mut TypeAttrs) {
+    fn parse_help_triggers(m: &syn::MetaList, errors: &Errors, this: &mut Self) {
         let parser = Punctuated::<syn::Expr, syn::Token![,]>::parse_terminated;
         match parser.parse(m.tokens.clone().into()) {
             Ok(args) => {
@@ -612,7 +612,7 @@ impl TypeAttrs {
     }
 
     // get the list of arguments that trigger printing of the crate name and version as a vector of strings
-    fn parse_version_triggers(m: &syn::MetaList, errors: &Errors, this: &mut TypeAttrs) {
+    fn parse_version_triggers(m: &syn::MetaList, errors: &Errors, this: &mut Self) {
         let parser = Punctuated::<syn::Expr, syn::Token![,]>::parse_terminated;
         match parser.parse(m.tokens.clone().into()) {
             Ok(args) => {
@@ -630,7 +630,7 @@ impl TypeAttrs {
     }
 
     fn parse_attr_usage(&mut self, errors: &Errors, m: &syn::MetaNameValue) {
-        parse_attr_single_string(errors, m, "usage", &mut self.usage)
+        parse_attr_single_string(errors, m, "usage", &mut self.usage);
     }
 }
 
@@ -643,7 +643,7 @@ pub struct VariantAttrs {
 impl VariantAttrs {
     /// Parse enum variant `#[argh(...)]` attributes
     pub fn parse(errors: &Errors, variant: &syn::Variant) -> Self {
-        let mut this = VariantAttrs::default();
+        let mut this = Self::default();
 
         let fields = match &variant.fields {
             syn::Fields::Named(fields) => Some(&fields.named),
@@ -660,9 +660,7 @@ impl VariantAttrs {
         }
 
         for attr in &variant.attrs {
-            let ml = if let Some(ml) = argh_attr_to_meta_list(errors, attr) {
-                ml
-            } else {
+            let Some(ml) = argh_attr_to_meta_list(errors, attr) else {
                 continue;
             };
 
@@ -699,12 +697,10 @@ pub struct ChoiceVariantAttrs {
 impl ChoiceVariantAttrs {
     /// Parse choice enum variant `#[argh(...)]` attributes
     pub fn parse(errors: &Errors, variant: &syn::Variant) -> Self {
-        let mut this = ChoiceVariantAttrs::default();
+        let mut this = Self::default();
 
         for attr in &variant.attrs {
-            let ml = if let Some(ml) = argh_attr_to_meta_list(errors, attr) {
-                ml
-            } else {
+            let Some(ml) = argh_attr_to_meta_list(errors, attr) else {
                 continue;
             };
 
@@ -806,14 +802,12 @@ fn parse_attr_multi_string(errors: &Errors, m: &syn::MetaNameValue, list: &mut V
 }
 
 fn parse_attr_doc(errors: &Errors, attr: &syn::Attribute, slot: &mut Option<Description>) {
-    let nv = if let Some(nv) = errors.expect_meta_name_value(&attr.meta) {
-        nv
-    } else {
+    let Some(nv) = errors.expect_meta_name_value(&attr.meta) else {
         return;
     };
 
     // Don't replace an existing explicit description.
-    if slot.as_ref().map(|d| d.explicit).unwrap_or(false) {
+    if slot.as_ref().is_some_and(|d| d.explicit) {
         return;
     }
 
@@ -821,9 +815,9 @@ fn parse_attr_doc(errors: &Errors, attr: &syn::Attribute, slot: &mut Option<Desc
         let lit_str = if let Some(previous) = slot {
             let previous = &previous.content;
             let previous_span = previous.span();
-            syn::LitStr::new(&(previous.value() + &unescape_doc(lit_str.value())), previous_span)
+            syn::LitStr::new(&(previous.value() + &unescape_doc(&lit_str.value())), previous_span)
         } else {
-            syn::LitStr::new(&unescape_doc(lit_str.value()), lit_str.span())
+            syn::LitStr::new(&unescape_doc(&lit_str.value()), lit_str.span())
         };
         *slot = Some(Description { explicit: false, content: lit_str });
     }
@@ -831,9 +825,9 @@ fn parse_attr_doc(errors: &Errors, attr: &syn::Attribute, slot: &mut Option<Desc
 
 /// Replaces escape sequences in doc-comments with the characters they represent.
 ///
-/// Rustdoc understands CommonMark escape sequences consisting of a backslash followed by an ASCII
+/// Rustdoc understands `CommonMark` escape sequences consisting of a backslash followed by an ASCII
 /// punctuation character. Any other backslash is treated as a literal backslash.
-fn unescape_doc(s: String) -> String {
+fn unescape_doc(s: &str) -> String {
     let mut result = String::with_capacity(s.len());
 
     let mut characters = s.chars().peekable();
@@ -859,9 +853,7 @@ fn unescape_doc(s: String) -> String {
 }
 
 fn parse_attr_description(errors: &Errors, m: &syn::MetaNameValue, slot: &mut Option<Description>) {
-    let lit_str = if let Some(lit_str) = errors.expect_lit_str(&m.value) {
-        lit_str
-    } else {
+    let Some(lit_str) = errors.expect_lit_str(&m.value) else {
         return;
     };
 
@@ -877,6 +869,8 @@ fn parse_attr_description(errors: &Errors, m: &syn::MetaNameValue, slot: &mut Op
 
 /// Checks that a `#![derive(FromArgs)]` enum has an `#[argh(subcommand)]`
 /// attribute and that it does not have any other type-level `#[argh(...)]` attributes.
+// Allow: Span is Copy; by-value would require touching callers in other files.
+#[allow(clippy::trivially_copy_pass_by_ref)]
 pub fn check_enum_type_attrs(errors: &Errors, type_attrs: &TypeAttrs, type_span: &Span) {
     let TypeAttrs {
         is_subcommand,

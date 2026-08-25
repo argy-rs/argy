@@ -26,8 +26,10 @@ fn indent_for(max_name_len: usize) -> usize {
 /// Returns a `TokenStream` generating a `String` help message.
 ///
 /// Note: `fields` entries with `is_subcommand.is_some()` will be ignored
-/// in favor of the `subcommand` argument.
-pub(crate) fn help(
+#[allow(clippy::too_many_lines)] // Help assembly is one cohesive routine; splitting would harm readability.
+#[allow(clippy::literal_string_with_formatting_args)] // `{metadata}` is a deliberate runtime `format!` placeholder.
+#[allow(clippy::needless_pass_by_value)] // Signature matches lib.rs callers that pass the ident by value.
+pub fn help(
     errors: &Errors,
     cmd_name_str_array_ident: syn::Ident,
     ty_attrs: &TypeAttrs,
@@ -117,7 +119,7 @@ pub(crate) fn help(
             .clone()
             .map(|o| {
                 let long = o.long_name.as_ref().expect("missing long name for option");
-                option_name(o.attrs.short.as_ref().map(|s| s.value()), long).chars().count()
+                option_name(o.attrs.short.as_ref().map(syn::LitChar::value), long).chars().count()
             })
             .chain(std::iter::once(help_triggers.join(", ").chars().count()))
             .max()
@@ -154,7 +156,7 @@ pub(crate) fn help(
         };
     } else {
         subcommand_calculation = TokenStream::new();
-        subcommand_format_arg = TokenStream::new()
+        subcommand_format_arg = TokenStream::new();
     }
 
     lits_section(&mut format_lit, "Examples:", &ty_attrs.examples);
@@ -297,25 +299,26 @@ fn option_usage(out: &mut String, field: &StructField<'_>) {
     }
 }
 
-// TODO(cramertj) make it so this is only called at least once per object so
-// as to avoid creating multiple errors.
+#[allow(clippy::ref_option)] // Signature shared with lib.rs and args_info.rs callers passing `&Option`.
 pub fn require_description(
     errors: &Errors,
     err_span: Span,
     desc: &Option<Description>,
     kind: &str, // the thing being described ("type" or "field"),
 ) -> String {
-    desc.as_ref().map(|d| d.content.value().trim().to_owned()).unwrap_or_else(|| {
-        errors.err_span(
-            err_span,
-            &format!(
-                "#[derive(FromArgs)] {} with no description.
-Add a doc comment or an `#[argh(description = \"...\")]` attribute.",
-                kind
-            ),
-        );
-        "".to_string()
-    })
+    desc.as_ref().map_or_else(
+        || {
+            errors.err_span(
+                err_span,
+                &format!(
+                    "#[derive(FromArgs)] {kind} with no description.
+Add a doc comment or an `#[argh(description = \"...\")]` attribute."
+                ),
+            );
+            String::new()
+        },
+        |d| d.content.value().trim().to_owned(),
+    )
 }
 
 /// Describes a positional argument like this:
@@ -323,11 +326,13 @@ Add a doc comment or an `#[argh(description = \"...\")]` attribute.",
 fn positional_description(out: &mut String, field: &StructField<'_>, description_indent: usize) {
     let field_name = field.positional_arg_name();
 
-    let mut description = String::from("");
-    if let Some(desc) = &field.attrs.description {
-        description = desc.content.value().trim().to_owned();
-    }
-    positional_description_format(out, &field_name, &description, description_indent)
+    let description = field
+        .attrs
+        .description
+        .as_ref()
+        .map(|d| d.content.value().trim().to_owned())
+        .unwrap_or_default();
+    positional_description_format(out, &field_name, &description, description_indent);
 }
 
 fn positional_description_format(
@@ -350,7 +355,7 @@ fn option_description(
     field: &StructField<'_>,
     description_indent: usize,
 ) {
-    let short = field.attrs.short.as_ref().map(|s| s.value());
+    let short = field.attrs.short.as_ref().map(syn::LitChar::value);
     let long_with_leading_dashes = field.long_name.as_ref().expect("missing long name for option");
     let description =
         require_description(errors, field.name.span(), &field.attrs.description, "field");
@@ -361,7 +366,7 @@ fn option_description(
         long_with_leading_dashes,
         &description,
         description_indent,
-    )
+    );
 }
 
 /// Builds the displayed name for an option, e.g. `-f, --force` (short first)

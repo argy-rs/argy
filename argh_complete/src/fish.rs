@@ -40,7 +40,7 @@ impl Generator for Fish {
 
         let mut known_value_flags_str = String::new();
         for flag in value_flags {
-            known_value_flags_str.push_str(&format!("'{flag}' "));
+            let _ = write!(known_value_flags_str, "'{flag}' ");
         }
 
         // Generate the custom parsing state machine function that replaces `__fish_seen_subcommand_from`
@@ -114,7 +114,7 @@ fn generate_fish_cmd(
 
     // Generate flags for this command
     for flag in cmd.flags {
-        let mut line = format!("complete -c {}", base_cmd);
+        let mut line = format!("complete -c {base_cmd}");
         if !joined_condition.is_empty() {
             line.push(' ');
             line.push_str(&joined_condition);
@@ -126,12 +126,12 @@ fn generate_fish_cmd(
         if !flag.long.is_empty() {
             let stripped_long = flag.long.trim_start_matches('-');
             if !stripped_long.is_empty() {
-                line.push_str(&format!(" -l {}", stripped_long));
+                let _ = write!(line, " -l {stripped_long}");
             }
         }
 
         if let Some(short) = flag.short {
-            line.push_str(&format!(" -s {}", short));
+            let _ = write!(line, " -s {short}");
         }
 
         if let FlagInfoKind::Option { .. } = flag.kind {
@@ -139,27 +139,28 @@ fn generate_fish_cmd(
         }
 
         if !flag.description.is_empty() {
-            let description = flag.description.replace("'", "\\'");
-            line.push_str(&format!(" -d '{}'", description));
+            let description = flag.description.replace('\'', "\\'");
+            let _ = write!(line, " -d '{description}'");
         }
 
-        writeln!(out, "{}", line).unwrap();
+        writeln!(out, "{line}").unwrap();
     }
 
     // Generate immediate subcommands (as arguments to this command)
     for subcmd in cmd.commands.iter().filter(|s| !s.command.hidden) {
-        let mut line = format!("complete -c {}", base_cmd);
+        let mut line = format!("complete -c {base_cmd}");
         if !joined_condition.is_empty() {
             line.push(' ');
             line.push_str(&joined_condition);
         }
         // Subcommands are just arguments that don't take files
-        line.push_str(&format!(
+        let _ = write!(
+            line,
             " -f -a '{}' -d '{}'",
             subcmd.name,
-            subcmd.command.description.replace("'", "\\'")
-        ));
-        writeln!(out, "{}", line).unwrap();
+            subcmd.command.description.replace('\'', "\\'")
+        );
+        writeln!(out, "{line}").unwrap();
     }
 
     // Recurse

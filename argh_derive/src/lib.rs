@@ -4,6 +4,7 @@
 // license that can be found in the LICENSE file.
 
 use parse_attrs::has_argh_attrs;
+use std::fmt::Write as _;
 use syn::ext::IdentExt as _;
 
 /// Implementation of the `FromArgs` and `argh(...)` derive attributes.
@@ -74,12 +75,11 @@ fn impl_from_args(input: &syn::DeriveInput) -> TokenStream {
 
 fn impl_from_arg_value(input: &syn::DeriveInput) -> TokenStream {
     let errors = &Errors::default();
-    let mut output_tokens = match &input.data {
-        syn::Data::Enum(de) => impl_from_arg_value_enum(errors, &input.ident, &input.generics, de),
-        _ => {
-            errors.err(input, "`#[derive(FromArgValue)]` can only be applied to `enum`s");
-            TokenStream::new()
-        }
+    let mut output_tokens = if let syn::Data::Enum(de) = &input.data {
+        impl_from_arg_value_enum(errors, &input.ident, &input.generics, de)
+    } else {
+        errors.err(input, "`#[derive(FromArgValue)]` can only be applied to `enum`s");
+        TokenStream::new()
     };
     if has_argh_attrs(&input.attrs) {
         errors.err(
@@ -100,9 +100,9 @@ enum Optionality {
     DefaultedRepeating(TokenStream),
 }
 
-impl PartialEq<Optionality> for Optionality {
-    fn eq(&self, other: &Optionality) -> bool {
-        use Optionality::*;
+impl PartialEq<Self> for Optionality {
+    fn eq(&self, other: &Self) -> bool {
+        use Optionality::{Optional, Repeating};
         // NB: (Defaulted, Defaulted) can't contain the same token streams
         matches!((self, other), (Optional, Optional) | (Repeating, Repeating))
     }
@@ -110,8 +110,8 @@ impl PartialEq<Optionality> for Optionality {
 
 impl Optionality {
     /// Whether or not this is `Optionality::None`
-    fn is_required(&self) -> bool {
-        matches!(self, Optionality::None)
+    const fn is_required(&self) -> bool {
+        matches!(self, Self::None)
     }
 }
 
@@ -175,12 +175,9 @@ impl<'a> StructField<'a> {
             }
             FieldKind::Option | FieldKind::Positional => {
                 if let Some(default) = &attrs.default {
-                    let tokens = match TokenStream::from_str(&default.value()) {
-                        Ok(tokens) => tokens,
-                        Err(_) => {
-                            errors.err(&default, "Invalid tokens: unable to lex `default` value");
-                            return None;
-                        }
+                    let Ok(tokens) = TokenStream::from_str(&default.value()) else {
+                        errors.err(&default, "Invalid tokens: unable to lex `default` value");
+                        return None;
                     };
                     // Set the span of the generated tokens to the string literal
                     let tokens: TokenStream = tokens
@@ -224,29 +221,31 @@ impl<'a> StructField<'a> {
         // Defaults to the kebab-case'd field name if `#[argh(long = "...")]` is omitted.
         let long_name = match kind {
             FieldKind::Switch | FieldKind::Option => {
-                let long_name = attrs.long.as_ref().map(syn::LitStr::value).unwrap_or_else(|| {
-                    let kebab_name = to_kebab_case(&name.unraw().to_string());
-                    check_long_name(errors, name, &kebab_name);
-                    kebab_name
-                });
+                let long_name = attrs.long.as_ref().map_or_else(
+                    || {
+                        let kebab_name = to_kebab_case(&name.unraw().to_string());
+                        check_long_name(errors, name, &kebab_name);
+                        kebab_name
+                    },
+                    syn::LitStr::value,
+                );
                 if long_name == "help" {
                     errors.err(field, "Custom `--help` flags are not supported.");
                 }
-                let long_name = format!("--{}", long_name);
+                let long_name = format!("--{long_name}");
                 Some(long_name)
             }
             FieldKind::SubCommand | FieldKind::Positional => None,
         };
 
-        Some(StructField { field, attrs, kind, optionality, ty_without_wrapper, name, long_name })
+        Some(StructField { field, attrs, name, kind, ty_without_wrapper, optionality, long_name })
     }
 
     pub(crate) fn positional_arg_name(&self) -> String {
         self.attrs
             .arg_name
             .as_ref()
-            .map(LitStr::value)
-            .unwrap_or_else(|| self.name.to_string().trim_matches('_').to_owned())
+            .map_or_else(|| self.name.to_string().trim_matches('_').to_owned(), LitStr::value)
     }
 }
 
@@ -255,9 +254,9 @@ fn to_kebab_case(s: &str) -> String {
     let mut res = String::with_capacity(s.len());
     for word in words {
         if !res.is_empty() {
-            res.push('-')
+            res.push('-');
         }
-        res.push_str(word)
+        res.push_str(word);
     }
     res
 }
@@ -267,7 +266,7 @@ fn test_kebabs() {
     #[track_caller]
     fn check(s: &str, want: &str) {
         let got = to_kebab_case(s);
-        assert_eq!(got.as_str(), want)
+        assert_eq!(got.as_str(), want);
     }
     check("", "");
     check("_", "");
@@ -337,6 +336,8 @@ fn impl_from_args_struct(
     trait_impl
 }
 
+// Too many lines: this helper builds a large generated token stream.
+#[allow(clippy::too_many_lines)]
 fn impl_from_args_struct_from_args<'a>(
     errors: &Errors,
     type_attrs: &TypeAttrs,
@@ -348,14 +349,11 @@ fn impl_from_args_struct_from_args<'a>(
         fields.iter().filter(|field| field.kind == FieldKind::Positional).collect();
     let positional_field_idents = positional_fields.iter().map(|field| &field.field.ident);
     let positional_field_names = positional_fields.iter().map(|field| field.name.to_string());
-    let last_positional_is_repeating = positional_fields
-        .last()
-        .map(|field| field.optionality == Optionality::Repeating)
-        .unwrap_or(false);
+    let last_positional_is_repeating =
+        positional_fields.last().is_some_and(|field| field.optionality == Optionality::Repeating);
     let last_positional_is_greedy = positional_fields
         .last()
-        .map(|field| field.kind == FieldKind::Positional && field.attrs.greedy.is_some())
-        .unwrap_or(false);
+        .is_some_and(|field| field.kind == FieldKind::Positional && field.attrs.greedy.is_some());
 
     let flag_output_table = fields.iter().filter_map(|field| {
         let field_name = &field.field.ident;
@@ -389,22 +387,23 @@ fn impl_from_args_struct_from_args<'a>(
     let append_missing_requirements =
         append_missing_requirements(&missing_requirements_ident, fields);
 
-    let parse_subcommands = if let Some(subcommand) = subcommand {
-        let name = subcommand.name;
-        let ty = subcommand.ty_without_wrapper;
-        quote_spanned! { impl_span =>
-            Some(argh::ParseStructSubCommand {
-                subcommands: <#ty as argh::SubCommands>::COMMANDS,
-                dynamic_subcommands: &<#ty as argh::SubCommands>::dynamic_commands(),
-                parse_func: &mut |__command, __remaining_args| {
-                    #name = Some(<#ty as argh::FromArgs>::from_args(__command, __remaining_args)?);
-                    ::core::result::Result::Ok(())
-                },
-            })
-        }
-    } else {
-        quote_spanned! { impl_span => None }
-    };
+    let parse_subcommands = subcommand.map_or_else(
+        || quote_spanned! { impl_span => None },
+        |subcommand| {
+            let name = subcommand.name;
+            let ty = subcommand.ty_without_wrapper;
+            quote_spanned! { impl_span =>
+                Some(argh::ParseStructSubCommand {
+                    subcommands: <#ty as argh::SubCommands>::COMMANDS,
+                    dynamic_subcommands: &<#ty as argh::SubCommands>::dynamic_commands(),
+                    parse_func: &mut |__command, __remaining_args| {
+                        #name = Some(<#ty as argh::FromArgs>::from_args(__command, __remaining_args)?);
+                        ::core::result::Result::Ok(())
+                    },
+                })
+            }
+        },
+    );
 
     let help_triggers = get_help_triggers(type_attrs);
     let parse_help_triggers = get_parse_help_triggers(type_attrs);
@@ -475,9 +474,9 @@ fn impl_from_args_struct_from_args<'a>(
     method_impl
 }
 
-/// get help triggers vector from type_attrs.help_triggers as a [`Vec<String>`]
+/// get help triggers vector from `type_attrs.help_triggers` as a [`Vec<String>`]
 ///
-/// Defaults to vec!["--help", "help"] if type_attrs.help_triggers is None
+/// Defaults to vec!["--help", "help"] if `type_attrs.help_triggers` is None
 fn get_help_triggers(type_attrs: &TypeAttrs) -> Vec<String> {
     let help_triggers = type_attrs.help_triggers.as_ref().map_or_else(
         || vec!["--help".to_owned(), "help".to_owned()],
@@ -510,9 +509,9 @@ fn get_parse_help_triggers(type_attrs: &TypeAttrs) -> Vec<String> {
     help_triggers
 }
 ///
-/// Get version triggers vector from type_attrs.version_triggers as a [`Vec<String>`].
+/// Get version triggers vector from `type_attrs.version_triggers` as a [`Vec<String>`].
 ///
-/// Defaults to vec!["--version", "-V"] if type_attrs.version_triggers is None, so
+/// Defaults to vec!["--version", "-V"] if `type_attrs.version_triggers` is None, so
 /// `-V` is accepted as a short form of `--version` like in clap.
 fn get_version_triggers(type_attrs: &TypeAttrs) -> Vec<String> {
     let version_triggers = type_attrs.version_triggers.as_ref().map_or_else(
@@ -564,6 +563,8 @@ fn version_func(type_attrs: &TypeAttrs) -> TokenStream {
     }
 }
 
+// Too many lines: this helper builds a large generated token stream.
+#[allow(clippy::too_many_lines)]
 fn impl_from_args_struct_redact_arg_values<'a>(
     errors: &Errors,
     type_attrs: &TypeAttrs,
@@ -576,14 +577,11 @@ fn impl_from_args_struct_redact_arg_values<'a>(
         fields.iter().filter(|field| field.kind == FieldKind::Positional).collect();
     let positional_field_idents = positional_fields.iter().map(|field| &field.field.ident);
     let positional_field_names = positional_fields.iter().map(|field| field.name.to_string());
-    let last_positional_is_repeating = positional_fields
-        .last()
-        .map(|field| field.optionality == Optionality::Repeating)
-        .unwrap_or(false);
+    let last_positional_is_repeating =
+        positional_fields.last().is_some_and(|field| field.optionality == Optionality::Repeating);
     let last_positional_is_greedy = positional_fields
         .last()
-        .map(|field| field.kind == FieldKind::Positional && field.attrs.greedy.is_some())
-        .unwrap_or(false);
+        .is_some_and(|field| field.kind == FieldKind::Positional && field.attrs.greedy.is_some());
 
     let flag_output_table = fields.iter().filter_map(|field| {
         let field_name = &field.field.ident;
@@ -617,22 +615,23 @@ fn impl_from_args_struct_redact_arg_values<'a>(
     let append_missing_requirements =
         append_missing_requirements(&missing_requirements_ident, fields);
 
-    let redact_subcommands = if let Some(subcommand) = subcommand {
-        let name = subcommand.name;
-        let ty = subcommand.ty_without_wrapper;
-        quote_spanned! { impl_span =>
-            Some(argh::ParseStructSubCommand {
-                subcommands: <#ty as argh::SubCommands>::COMMANDS,
-                dynamic_subcommands: &<#ty as argh::SubCommands>::dynamic_commands(),
-                parse_func: &mut |__command, __remaining_args| {
-                    #name = Some(<#ty as argh::FromArgs>::redact_arg_values(__command, __remaining_args)?);
-                    ::core::result::Result::Ok(())
-                },
-            })
-        }
-    } else {
-        quote_spanned! { impl_span => None }
-    };
+    let redact_subcommands = subcommand.map_or_else(
+        || quote_spanned! { impl_span => None },
+        |subcommand| {
+            let name = subcommand.name;
+            let ty = subcommand.ty_without_wrapper;
+            quote_spanned! { impl_span =>
+                Some(argh::ParseStructSubCommand {
+                    subcommands: <#ty as argh::SubCommands>::COMMANDS,
+                    dynamic_subcommands: &<#ty as argh::SubCommands>::dynamic_commands(),
+                    parse_func: &mut |__command, __remaining_args| {
+                        #name = Some(<#ty as argh::FromArgs>::redact_arg_values(__command, __remaining_args)?);
+                        ::core::result::Result::Ok(())
+                    },
+                })
+            }
+        },
+    );
 
     let unwrap_cmd_name_err_string = if type_attrs.is_subcommand.is_none() {
         quote! { "no command name" }
@@ -744,7 +743,7 @@ fn ensure_unique_names(errors: &Errors, fields: &[StructField<'_>]) {
             if let Some(first_use_field) = seen_short_names.get(&short_name) {
                 errors.err_span_tokens(
                     first_use_field,
-                    &format!("The short name of \"-{}\" was already used here.", short_name),
+                    &format!("The short name of \"-{short_name}\" was already used here."),
                 );
                 errors.err_span_tokens(field.field, "Later usage here.");
             }
@@ -756,7 +755,7 @@ fn ensure_unique_names(errors: &Errors, fields: &[StructField<'_>]) {
             if let Some(first_use_field) = seen_long_names.get(&long_name) {
                 errors.err_span_tokens(
                     *first_use_field,
-                    &format!("The long name of \"{}\" was already used here.", long_name),
+                    &format!("The long name of \"{long_name}\" was already used here."),
                 );
                 errors.err_span_tokens(field.field, "Later usage here.");
             }
@@ -792,7 +791,7 @@ fn top_or_sub_cmd_impl(
             &empty_str
         });
         let short_name =
-            type_attrs.short.as_ref().map(|c| quote! { &#c }).unwrap_or_else(|| quote! { &'\0' });
+            type_attrs.short.as_ref().map_or_else(|| quote! { &'\0' }, |c| quote! { &#c });
         let aliases =
             type_attrs.aliases.iter().map(|lit| syn::LitStr::new(&lit.value(), lit.span()));
         let aliases = quote! { &[#( #aliases, )*] };
@@ -837,14 +836,14 @@ fn declare_local_storage_for_from_args_fields<'a>(
 
         match field.kind {
             FieldKind::Option | FieldKind::Positional => {
-                let from_str_fn = match &field.attrs.from_str_fn {
-                    Some(from_str_fn) => from_str_fn.into_token_stream(),
-                    None => {
+                let from_str_fn = field.attrs.from_str_fn.as_ref().map_or_else(
+                    || {
                         quote! {
                             <#field_type as argh::FromArgValue>::from_arg_value
                         }
-                    }
-                };
+                    },
+                    ToTokens::into_token_stream,
+                );
 
                 quote! {
                     let mut #field_name: argh::ParseValueSlotTy<#field_slot_type, #field_type>
@@ -1102,7 +1101,7 @@ fn conflicts_entries(
                 _ => {
                     errors.err(
                         conflict,
-                        &format!("`conflicts_with` references unknown option `{}`", ref_name),
+                        &format!("`conflicts_with` references unknown option `{ref_name}`"),
                     );
                 }
             }
@@ -1250,6 +1249,8 @@ fn ty_inner<'a>(wrapper_names: &[&str], ty: &'a syn::Type) -> Option<&'a syn::Ty
 }
 
 /// Implements `FromArgs` and `SubCommands` for a `#![derive(FromArgs)]` enum.
+// Too many lines: this helper builds a large generated token stream.
+#[allow(clippy::too_many_lines)]
 fn impl_from_args_enum(
     errors: &Errors,
     name: &syn::Ident,
@@ -1260,6 +1261,7 @@ fn impl_from_args_enum(
     parse_attrs::check_enum_type_attrs(errors, type_attrs, &de.enum_token.span);
 
     // An enum variant like `<name>(<ty>)`
+    #[allow(clippy::items_after_statements)] // Local helper struct used by the generated impl below.
     struct SubCommandVariant<'a> {
         name: &'a syn::Ident,
         ty: &'a syn::Type,
@@ -1414,7 +1416,11 @@ fn enum_only_single_field_unnamed_variants<'a>(
             None
         }
         syn::Fields::Unnamed(fields) => {
-            if fields.unnamed.len() != 1 {
+            if fields.unnamed.len() == 1 {
+                // `unwrap` is okay because of the length check above.
+                let first_field = fields.unnamed.first().unwrap();
+                Some(&first_field.ty)
+            } else {
                 errors.err(
                     fields,
                     with_enum_suggestion!(
@@ -1422,10 +1428,6 @@ fn enum_only_single_field_unnamed_variants<'a>(
                     ),
                 );
                 None
-            } else {
-                // `unwrap` is okay because of the length check above.
-                let first_field = fields.unnamed.first().unwrap();
-                Some(&first_field.ty)
             }
         }
     }
@@ -1452,13 +1454,10 @@ fn impl_from_arg_value_enum(
             let ident = &variant.ident;
             choice_enum_only_fieldless_variant(errors, &variant.fields);
             let attrs = parse_attrs::ChoiceVariantAttrs::parse(errors, variant);
-            let name = match attrs.name_override {
-                Some(lit) => lit,
-                None => {
-                    let name_str = pascal_to_snake_case(&format!("{}", ident));
-                    syn::LitStr::new(&name_str, ident.span())
-                }
-            };
+            let name = attrs.name_override.unwrap_or_else(|| {
+                let name_str = pascal_to_snake_case(&format!("{ident}"));
+                syn::LitStr::new(&name_str, ident.span())
+            });
             ChoiceVariant { ident, name, aliases: attrs.aliases }
         })
         .collect();
@@ -1488,7 +1487,7 @@ fn impl_from_arg_value_enum(
             } else {
                 err.push_str(", ");
             }
-            err.push_str(&format!("{:?}", name.value()));
+            let _ = write!(err, "{:?}", name.value());
         }
         LitStr::new(&err, name.span())
     };

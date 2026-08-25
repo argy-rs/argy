@@ -21,7 +21,7 @@ impl Generator for Nushell {
 
 fn generate_nushell_cmd(out: &mut String, cmd_name: &str, cmd: &CommandInfoWithArgs<'_>) {
     // Generate the extern block for the current command
-    writeln!(out, "export extern \"{}\" [", cmd_name).unwrap();
+    writeln!(out, "export extern \"{cmd_name}\" [").unwrap();
 
     // Generate flags
     for flag in cmd.flags {
@@ -36,9 +36,9 @@ fn generate_nushell_cmd(out: &mut String, cmd_name: &str, cmd: &CommandInfoWithA
                 // If there is only a short flag, we must output it as a short option.
                 // Nushell requires some long name for just `-s`, but standard is `-s`.
                 // If it's only short, typically `-$short`
-                flag_def.push_str(&format!("-{}", short));
+                let _ = write!(flag_def, "-{short}");
             } else {
-                flag_def.push_str(&format!("(-{})", short));
+                let _ = write!(flag_def, "(-{short})");
             }
         }
 
@@ -47,10 +47,10 @@ fn generate_nushell_cmd(out: &mut String, cmd_name: &str, cmd: &CommandInfoWithA
         }
 
         if !flag.description.is_empty() {
-            flag_def.push_str(&format!(" # {}", flag.description));
+            let _ = write!(flag_def, " # {}", flag.description);
         }
 
-        writeln!(out, "    {}", flag_def).unwrap();
+        writeln!(out, "    {flag_def}").unwrap();
     }
 
     // Generate positional arguments
@@ -59,18 +59,22 @@ fn generate_nushell_cmd(out: &mut String, cmd_name: &str, cmd: &CommandInfoWithA
 
         let mut pos_def = String::new();
         match pos.optionality {
-            Optionality::Required => pos_def.push_str(&format!("{}: string", name)),
-            Optionality::Optional => pos_def.push_str(&format!("{}?: string", name)),
+            Optionality::Required => {
+                let _ = write!(pos_def, "{name}: string");
+            }
+            Optionality::Optional => {
+                let _ = write!(pos_def, "{name}?: string");
+            }
             Optionality::Repeating | Optionality::Greedy => {
-                pos_def.push_str(&format!("...{}: string", name))
+                let _ = write!(pos_def, "...{name}: string");
             }
         }
 
         if !pos.description.is_empty() {
-            pos_def.push_str(&format!(" # {}", pos.description));
+            let _ = write!(pos_def, " # {}", pos.description);
         }
 
-        writeln!(out, "    {}", pos_def).unwrap();
+        writeln!(out, "    {pos_def}").unwrap();
     }
 
     writeln!(out, "]").unwrap();
@@ -78,7 +82,7 @@ fn generate_nushell_cmd(out: &mut String, cmd_name: &str, cmd: &CommandInfoWithA
 
     // Recurse for subcommands
     for subcmd in cmd.commands.iter().filter(|s| !s.command.hidden) {
-        let next_cmd_name = format!("{} {}", cmd_name, subcmd.name);
+        let next_cmd_name = format!("{cmd_name} {}", subcmd.name);
         generate_nushell_cmd(out, &next_cmd_name, &subcmd.command);
     }
 }

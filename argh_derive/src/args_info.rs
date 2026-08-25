@@ -13,8 +13,8 @@ use proc_macro2::{Span, TokenStream};
 use quote::{quote, quote_spanned, ToTokens};
 use syn::LitStr;
 
-/// Implement the derive macro for ArgsInfo.
-pub(crate) fn impl_args_info(input: &syn::DeriveInput) -> TokenStream {
+/// Implement the derive macro for `ArgsInfo`.
+pub fn impl_args_info(input: &syn::DeriveInput) -> TokenStream {
     let errors = &Errors::default();
 
     // parse the types
@@ -37,7 +37,7 @@ pub(crate) fn impl_args_info(input: &syn::DeriveInput) -> TokenStream {
     output_tokens
 }
 
-/// Implement the ArgsInfo trait for a struct annotated with argh attributes.
+/// Implement the `ArgsInfo` trait for a struct annotated with argh attributes.
 fn impl_arg_info_struct(
     errors: &Errors,
     name: &syn::Ident,
@@ -89,7 +89,7 @@ fn impl_arg_info_struct(
     }
 }
 
-/// Implement ArgsInfo for an enum. The enum is a collection of subcommands.
+/// Implement `ArgsInfo` for an enum. The enum is a collection of subcommands.
 fn impl_arg_info_enum(
     errors: &Errors,
     name: &syn::Ident,
@@ -118,6 +118,7 @@ fn impl_arg_info_enum(
 
     // An enum variant like `<name>(<ty>)`. This is used to collect
     // the type of the variant for each subcommand.
+    #[allow(clippy::items_after_statements)] // helper struct used after local statements above
     struct ArgInfoVariant<'a> {
         ty: &'a syn::Type,
     }
@@ -169,17 +170,11 @@ fn impl_arg_info_enum(
         )
     });
 
-    let cmd_name = if let Some(id) = &type_attrs.name {
-        id.clone()
-    } else {
-        LitStr::new("", Span::call_site())
-    };
+    let cmd_name =
+        type_attrs.name.as_ref().map_or_else(|| LitStr::new("", Span::call_site()), Clone::clone);
 
-    let short_name = if let Some(id) = &type_attrs.short {
-        quote! { &#id }
-    } else {
-        quote! { &'\0' }
-    };
+    let short_name =
+        type_attrs.short.as_ref().map_or_else(|| quote! { &'\0' }, |id| quote! { &#id });
 
     let (impl_generics, ty_generics, where_clause) = generic_args.split_for_impl();
 
@@ -207,6 +202,7 @@ fn impl_arg_info_enum(
     }
 }
 
+#[allow(clippy::too_many_lines)] // large generated-code builder; refactor would obscure the layout
 fn impl_args_info_data<'a>(
     name: &proc_macro2::Ident,
     errors: &Errors,
@@ -241,8 +237,9 @@ fn impl_args_info_data<'a>(
     for field in fields {
         let optionality = match field.optionality {
             Optionality::None => quote! { argh::Optionality::Required },
-            Optionality::Defaulted(_) => quote! { argh::Optionality::Optional },
-            Optionality::Optional => quote! { argh::Optionality::Optional },
+            Optionality::Defaulted(_) | Optionality::Optional => {
+                quote! { argh::Optionality::Optional }
+            }
             Optionality::Repeating | Optionality::DefaultedRepeating(_)
                 if field.attrs.greedy.is_some() =>
             {
@@ -257,11 +254,11 @@ fn impl_args_info_data<'a>(
             FieldKind::Positional => {
                 let name = field.positional_arg_name();
 
-                let description = if let Some(desc) = &field.attrs.description {
-                    desc.content.value().trim().to_owned()
-                } else {
-                    String::new()
-                };
+                let description = field
+                    .attrs
+                    .description
+                    .as_ref()
+                    .map_or_else(String::new, |desc| desc.content.value().trim().to_owned());
                 let hidden = field.attrs.hidden_help;
 
                 positionals.push(quote! {
@@ -274,11 +271,11 @@ fn impl_args_info_data<'a>(
                 });
             }
             FieldKind::Switch | FieldKind::Option => {
-                let short = if let Some(short) = &field.attrs.short {
-                    quote! { Some(#short) }
-                } else {
-                    quote! { None }
-                };
+                let short = field
+                    .attrs
+                    .short
+                    .as_ref()
+                    .map_or_else(|| quote! { None }, |short| quote! { Some(#short) });
 
                 let long = field.long_name.as_ref().expect("missing long name for option");
 
@@ -294,12 +291,13 @@ fn impl_args_info_data<'a>(
                         argh::FlagInfoKind::Switch
                     }
                 } else {
-                    let arg_name = if let Some(arg_name) = &field.attrs.arg_name {
-                        quote! { #arg_name }
-                    } else {
-                        let arg_name = long.trim_start_matches("--");
-                        quote! { #arg_name }
-                    };
+                    let arg_name = field.attrs.arg_name.as_ref().map_or_else(
+                        || {
+                            let arg_name = long.trim_start_matches("--");
+                            quote! { #arg_name }
+                        },
+                        |arg_name| quote! { #arg_name },
+                    );
 
                     quote! {
                         argh::FlagInfoKind::Option {
@@ -336,14 +334,15 @@ fn impl_args_info_data<'a>(
         &type_name
     };
 
-    let subcommand = if let Some(subcommand) = subcommand {
-        let subcommand_ty = subcommand.ty_without_wrapper;
-        quote! {
-            #subcommand_ty::get_subcommands()
-        }
-    } else {
-        quote! {vec![]}
-    };
+    let subcommand = subcommand.map_or_else(
+        || quote! { vec![] },
+        |subcommand| {
+            let subcommand_ty = subcommand.ty_without_wrapper;
+            quote! {
+                #subcommand_ty::get_subcommands()
+            }
+        },
+    );
 
     let description =
         require_description(errors, Span::call_site(), &type_attrs.description, "type");
@@ -354,11 +353,8 @@ fn impl_args_info_data<'a>(
         quote! { argh::ErrorCodeInfo{code:#code, description: #text} }
     });
 
-    let short_name = if let Some(id) = &type_attrs.short {
-        quote! { &#id }
-    } else {
-        quote! { &'\0' }
-    };
+    let short_name =
+        type_attrs.short.as_ref().map_or_else(|| quote! { &'\0' }, |id| quote! { &#id });
 
     let hidden = type_attrs.hidden;
 

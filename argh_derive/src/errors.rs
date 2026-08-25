@@ -57,7 +57,7 @@ impl Errors {
         first: &impl syn::spanned::Spanned,
         second: &impl syn::spanned::Spanned,
     ) {
-        self.duplicate_attrs_inner(attr_kind, first.span(), second.span())
+        self.duplicate_attrs_inner(attr_kind, first.span(), second.span());
     }
 
     fn duplicate_attrs_inner(&self, attr_kind: &str, first: Span, second: Span) {
@@ -78,7 +78,7 @@ impl Errors {
     ];
 
     fn unexpected_lit(&self, expected: &str, found: &syn::Expr) {
-        fn lit_kind(lit: &syn::Lit) -> &'static str {
+        const fn lit_kind(lit: &syn::Lit) -> &'static str {
             use syn::Lit::{Bool, Byte, ByteStr, Char, Float, Int, Str, Verbatim};
             match lit {
                 Str(_) => "string",
@@ -97,17 +97,17 @@ impl Errors {
             self.err(
                 found,
                 &["Expected ", expected, " literal, found ", lit_kind(lit), " literal"].concat(),
-            )
+            );
         } else {
             self.err(
                 found,
                 &["Expected ", expected, " literal, found non-literal expression."].concat(),
-            )
+            );
         }
     }
 
     fn unexpected_meta(&self, expected: &str, found: &syn::Meta) {
-        fn meta_kind(meta: &syn::Meta) -> &'static str {
+        const fn meta_kind(meta: &syn::Meta) -> &'static str {
             use syn::Meta::{List, NameValue, Path};
             match meta {
                 Path(_) => "path",
@@ -119,7 +119,7 @@ impl Errors {
         self.err(
             found,
             &["Expected ", expected, " attribute, found ", meta_kind(found), " attribute"].concat(),
-        )
+        );
     }
 
     /// Issue an error relating to a particular `Spanned` structure.
@@ -158,6 +158,6 @@ impl ToTokens for Errors {
     /// Convert the errors into tokens that, when emit, will cause
     /// the user of the macro to receive compiler errors.
     fn to_tokens(&self, tokens: &mut TokenStream) {
-        tokens.extend(self.errors.borrow().iter().map(|e| e.to_compile_error()));
+        tokens.extend(self.errors.borrow().iter().map(syn::Error::to_compile_error));
     }
 }

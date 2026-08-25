@@ -36,7 +36,7 @@ fn make_mock_command() -> CommandInfoWithArgs<'static> {
         CommandInfoWithArgs { name: "run", description: "a run command", ..Default::default() };
     let test_build_info =
         CommandInfoWithArgs { name: "build", description: "a build command", ..Default::default() };
-    let subcmd_2info = CommandInfoWithArgs {
+    let nested_subcmd_info = CommandInfoWithArgs {
         name: "test",
         description: "a test command",
         commands: vec![
@@ -59,7 +59,7 @@ fn make_mock_command() -> CommandInfoWithArgs<'static> {
         }],
         commands: vec![
             SubCommandInfo { name: "subcmd", command: subcmd_info },
-            SubCommandInfo { name: "test", command: subcmd_2info },
+            SubCommandInfo { name: "test", command: nested_subcmd_info },
         ],
         ..Default::default()
     }

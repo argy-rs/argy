@@ -59,10 +59,10 @@ fn exit_codes() {
     assert_eq!(run("utf8"), Some(1), "runtime error should exit 1");
 }
 
-fn run_cli(args: &str) -> ! {
-    let mut argv: Vec<String> = vec!["exit_codes".to_owned()];
-    argv.extend(args.split_whitespace().map(str::to_owned));
-    let strs: Vec<&str> = argv.iter().map(String::as_str).collect();
+fn run_cli(input: &str) -> ! {
+    let mut args: Vec<String> = vec!["exit_codes".to_owned()];
+    args.extend(input.split_whitespace().map(str::to_owned));
+    let strs: Vec<&str> = args.iter().map(String::as_str).collect();
 
     match ExitCodes::from_args(&["exit_codes"], &strs[1..]) {
         Ok(_) => std::process::exit(0),

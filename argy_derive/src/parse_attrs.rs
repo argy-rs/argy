@@ -805,6 +805,35 @@ uppercase, like an initialism",
     );
 }
 
+#[test]
+fn test_check_enum_type_attrs_span_by_value() {
+    use proc_macro2::TokenStream;
+    use quote::ToTokens;
+
+    #[track_caller]
+    fn produces_error(type_attrs: &TypeAttrs) -> bool {
+        let errors = Errors::default();
+        // `Span` is `Copy`; the function takes it by value. Passing a fresh
+        // `call_site()` span directly would not compile if the signature
+        // regressed back to `&Span`.
+        check_enum_type_attrs(&errors, type_attrs, Span::call_site());
+
+        let mut stream = TokenStream::new();
+        errors.to_tokens(&mut stream);
+        !stream.is_empty()
+    }
+
+    // An enum without `#[argy(subcommand)]` must report an error.
+    assert!(produces_error(&TypeAttrs::default()));
+
+    // An enum declaring `is_subcommand` must not report an error.
+    let ok = TypeAttrs {
+        is_subcommand: Some(syn::Ident::new("subcommand", Span::call_site())),
+        ..Default::default()
+    };
+    assert!(!produces_error(&ok));
+}
+
 fn parse_attr_single_string(
     errors: &Errors,
     m: &syn::MetaNameValue,
@@ -892,9 +921,7 @@ fn parse_attr_description(errors: &Errors, m: &syn::MetaNameValue, slot: &mut Op
 
 /// Checks that a `#![derive(FromArgs)]` enum has an `#[argy(subcommand)]`
 /// attribute and that it does not have any other type-level `#[argy(...)]` attributes.
-// Allow: Span is Copy; by-value would require touching callers in other files.
-#[allow(clippy::trivially_copy_pass_by_ref)]
-pub fn check_enum_type_attrs(errors: &Errors, type_attrs: &TypeAttrs, type_span: &Span) {
+pub fn check_enum_type_attrs(errors: &Errors, type_attrs: &TypeAttrs, type_span: Span) {
     let TypeAttrs {
         is_subcommand,
         repository,
@@ -916,7 +943,7 @@ pub fn check_enum_type_attrs(errors: &Errors, type_attrs: &TypeAttrs, type_span:
     // Ensure that `#[argy(subcommand)]` is present.
     if is_subcommand.is_none() {
         errors.err_span(
-            *type_span,
+            type_span,
             concat!(
                 "`#![derive(FromArgs)]` on `enum`s can only be used to enumerate subcommands.\n",
                 "To enumerate subcommands, add `#[argy(subcommand)]` to the `enum` declaration.\n",

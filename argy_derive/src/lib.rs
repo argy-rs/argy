@@ -1342,7 +1342,7 @@ fn impl_from_args_enum(
     generic_args: &syn::Generics,
     de: &syn::DataEnum,
 ) -> TokenStream {
-    parse_attrs::check_enum_type_attrs(errors, type_attrs, &de.enum_token.span);
+    parse_attrs::check_enum_type_attrs(errors, type_attrs, de.enum_token.span);
 
     // An enum variant like `<name>(<ty>)`
     #[allow(clippy::items_after_statements)] // Local helper struct used by the generated impl below.

@@ -98,7 +98,7 @@ fn impl_arg_info_enum(
     de: &syn::DataEnum,
 ) -> TokenStream {
     // Validate the enum is OK for argy.
-    check_enum_type_attrs(errors, type_attrs, &de.enum_token.span);
+    check_enum_type_attrs(errors, type_attrs, de.enum_token.span);
 
     // Ensure that `#[argy(subcommand)]` is present.
     if type_attrs.is_subcommand.is_none() {

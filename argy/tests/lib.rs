@@ -1802,7 +1802,62 @@ mod fuchsia_commandline_tools_rubric {
         let Err(e) = OneSwitch::from_args(&["cmdname"], &["--switchy=true"]) else {
             panic!("Parsing a switch with an inline value should fail")
         };
-        assert_eq!(e.output, "Option '--switchy' does not take a value.\n");
+        assert_eq!(
+            e.output,
+            "Error parsing option '--switchy' with value 'true': does not take a value\n"
+        );
+        assert!(e.status.is_err());
+    }
+
+    #[derive(FromArgs, Debug, PartialEq)]
+    /// One optional-value switch.
+    struct OptionalSwitch {
+        #[argy(switch)]
+        /// an optional boolean switch
+        flag: Option<bool>,
+    }
+
+    /// An `Option<bool>` switch is `None` when absent.
+    #[test]
+    fn optional_switch_absent_is_none() {
+        let parsed = OptionalSwitch::from_args(&["cmdname"], &[]).expect("parsing absent");
+        assert_eq!(parsed, OptionalSwitch { flag: None });
+    }
+
+    /// A bare `--flag` sets an `Option<bool>` switch to `Some(true)`.
+    #[test]
+    fn optional_switch_bare_is_some_true() {
+        let parsed =
+            OptionalSwitch::from_args(&["cmdname"], &["--flag"]).expect("parsing bare switch");
+        assert_eq!(parsed, OptionalSwitch { flag: Some(true) });
+    }
+
+    /// `--flag=true` sets an `Option<bool>` switch to `Some(true)`.
+    #[test]
+    fn optional_switch_true() {
+        let parsed = OptionalSwitch::from_args(&["cmdname"], &["--flag=true"])
+            .expect("parsing `--flag=true`");
+        assert_eq!(parsed, OptionalSwitch { flag: Some(true) });
+    }
+
+    /// `--flag=false` sets an `Option<bool>` switch to `Some(false)`.
+    #[test]
+    fn optional_switch_false() {
+        let parsed = OptionalSwitch::from_args(&["cmdname"], &["--flag=false"])
+            .expect("parsing `--flag=false`");
+        assert_eq!(parsed, OptionalSwitch { flag: Some(false) });
+    }
+
+    /// An invalid inline value on an `Option<bool>` switch is an error.
+    #[test]
+    fn optional_switch_rejects_invalid_bool_value() {
+        let Err(e) = OptionalSwitch::from_args(&["cmdname"], &["--flag=xyz"]) else {
+            panic!("Parsing an invalid boolean value should fail")
+        };
+        assert_eq!(
+            e.output,
+            "Error parsing option '--flag' with value 'xyz': invalid boolean value 'xyz'\n"
+        );
         assert!(e.status.is_err());
     }
 
@@ -2864,6 +2919,29 @@ Options:
   --height          how high to go
   --hidden          hidden from usage
   -h, --help, help  display usage information
+",
+    );
+}
+
+#[test]
+#[cfg(feature = "help")]
+fn optional_value_switch_usage_marker() {
+    #[derive(FromArgs)]
+    /// Has an optional-value switch.
+    struct Cmd {
+        /// an optional boolean switch
+        #[argy(switch)]
+        _flag: Option<bool>,
+    }
+
+    assert_help_string::<Cmd>(
+        r"Usage: test_arg_0 [--flag[=<bool>]]
+
+Has an optional-value switch.
+
+Options:
+  --flag        an optional boolean switch
+  --help, help  display usage information
 ",
     );
 }

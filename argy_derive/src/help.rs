@@ -7,7 +7,7 @@ use {
     crate::{
         errors::Errors,
         parse_attrs::{Description, FieldKind, TypeAttrs},
-        Optionality, StructField,
+        ty_is_option_bool, Optionality, StructField,
     },
     argy_shared::{DESCRIPTION_PADDING, INDENT},
     proc_macro2::{Span, TokenStream},
@@ -276,7 +276,13 @@ fn option_usage(out: &mut String, field: &StructField<'_>) {
 
     match field.kind {
         FieldKind::SubCommand | FieldKind::Positional => unreachable!(), // don't have long_name
-        FieldKind::Switch => {}
+        FieldKind::Switch => {
+            // An `Option<bool>` switch accepts an optional inline value,
+            // so render it as `[--flag[=<bool>]]`.
+            if ty_is_option_bool(&field.field.ty) {
+                out.push_str("[=<bool>]");
+            }
+        }
         FieldKind::Option => {
             out.push_str(" <");
             if let Some(arg_name) = &field.attrs.arg_name {

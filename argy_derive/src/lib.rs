@@ -1307,6 +1307,28 @@ fn ty_expect_switch(errors: &Errors, ty: &syn::Type) -> bool {
     res
 }
 
+/// Returns `true` if the type is exactly `Option<bool>` (used to detect an
+/// optional-value switch whose usage should show `[=<bool>]`).
+pub(crate) fn ty_is_option_bool(ty: &syn::Type) -> bool {
+    if let syn::Type::Path(path) = ty {
+        if path.qself.is_some() || path.path.segments.len() != 1 {
+            return false;
+        }
+        if path.path.segments[0].ident != "Option" {
+            return false;
+        }
+        let syn::PathArguments::AngleBracketed(args) = &path.path.segments[0].arguments else {
+            return false;
+        };
+        let Some(syn::GenericArgument::Type(syn::Type::Path(p))) = args.args.first() else {
+            return false;
+        };
+        p.path.segments.len() == 1 && p.path.segments[0].ident == "bool"
+    } else {
+        false
+    }
+}
+
 /// Returns `Some(T)` if a type is `wrapper_name<T>` for any `wrapper_name` in `wrapper_names`.
 fn ty_inner<'a>(wrapper_names: &[&str], ty: &'a syn::Type) -> Option<&'a syn::Type> {
     if let syn::Type::Path(path) = ty {

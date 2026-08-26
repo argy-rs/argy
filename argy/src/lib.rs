@@ -922,11 +922,21 @@ where
 #[doc(hidden)]
 pub trait ParseFlag {
     fn set_flag(&mut self, arg: &str);
+
+    fn set_flag_value(&mut self, arg: &str, _value: &str) -> Result<(), String> {
+        Err(["Option '", arg, "' does not take a value.\n"].concat())
+    }
 }
 
 impl<T: Flag> ParseFlag for T {
     fn set_flag(&mut self, _arg: &str) {
         <T as Flag>::set_flag(self);
+    }
+
+    fn set_flag_value(&mut self, arg: &str, value: &str) -> Result<(), String> {
+        <T as Flag>::set_flag_value(self, value).map_err(|e| {
+            ["Error parsing option '", arg, "' with value '", value, "': ", &e, "\n"].concat()
+        })
     }
 }
 
@@ -938,6 +948,11 @@ pub struct RedactFlag {
 impl ParseFlag for RedactFlag {
     fn set_flag(&mut self, arg: &str) {
         self.slot = Some(arg.to_string());
+    }
+
+    fn set_flag_value(&mut self, arg: &str, _value: &str) -> Result<(), String> {
+        self.slot = Some(arg.to_string());
+        Ok(())
     }
 }
 
@@ -1001,6 +1016,18 @@ pub trait Flag {
 
     /// Sets the flag. This function is called when the flag is provided.
     fn set_flag(&mut self);
+
+    /// Sets the flag from an explicit value, used by optional-value switches
+    /// such as `--flag=true`. The default implementation rejects any value;
+    /// types that accept one (e.g. `Option<bool>`) override this.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error string if `value` cannot be parsed into this flag's
+    /// type, or if this flag does not accept an explicit value.
+    fn set_flag_value(&mut self, _value: &str) -> Result<(), String> {
+        Err("does not take a value".to_string())
+    }
 }
 
 impl Flag for bool {
@@ -1019,6 +1046,20 @@ impl Flag for Option<bool> {
 
     fn set_flag(&mut self) {
         *self = Some(true);
+    }
+
+    fn set_flag_value(&mut self, value: &str) -> Result<(), String> {
+        match value {
+            "true" => {
+                *self = Some(true);
+                Ok(())
+            }
+            "false" => {
+                *self = Some(false);
+                Ok(())
+            }
+            other => Err(["invalid boolean value '", other, "'"].concat()),
+        }
     }
 }
 
@@ -1217,10 +1258,11 @@ impl ParseStructOptions<'_> {
 
         match self.slots[pos] {
             ParseStructOption::Flag(ref mut b) => {
-                if inline_value.is_some() {
-                    return Err(["Option '", arg_name, "' does not take a value.\n"].concat());
+                if let Some(value) = inline_value {
+                    b.set_flag_value(arg_name, value)?;
+                } else {
+                    b.set_flag(arg_name);
                 }
-                b.set_flag(arg_name);
             }
             ParseStructOption::Value(ref mut pvs) => {
                 let value = match inline_value {

@@ -95,6 +95,32 @@ fn main() {
 }
 ```
 
+Options and switches can also be sourced from environment variables using the
+`env` attribute. The environment variable only supplies the value when the
+option or switch is not provided on the command line, so a CLI value always
+takes precedence. An `env`-sourced value still counts as providing a required
+option.
+
+```rust
+use argy::FromArgs;
+
+#[derive(FromArgs)]
+/// Reach new heights.
+struct GoUp {
+    /// an optional height, falling back to the `HEIGHT` env var
+    #[argy(option, env = "HEIGHT")]
+    height: Option<usize>,
+
+    /// whether to jump, reading the `JUMP` env var when `--jump` is absent
+    #[argy(switch, env = "JUMP")]
+    jump: bool,
+}
+
+fn main() {
+    let up: GoUp = argy::from_env();
+}
+```
+
 Custom option types can be deserialized so long as they implement the
 `FromArgValue` trait (automatically implemented for all `FromStr` types).
 If more customized parsing is required, you can supply a custom

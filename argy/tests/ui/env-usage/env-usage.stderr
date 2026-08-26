@@ -1,0 +1,36 @@
+error: `env` may only be specified on `#[argy(option)]` or `#[argy(switch)]` fields
+ --> tests/ui/env-usage/env-usage.rs:4:30
+  |
+4 |     #[argy(positional, env = "POS_ENV")]
+  |                              ^^^^^^^^^
+
+error: Duplicate env attribute
+ --> tests/ui/env-usage/env-usage.rs:8:37
+  |
+8 |     #[argy(option, env = "DUP_ONE", env = "DUP_TWO")]
+  |                                     ^^^
+
+error: First env attribute here
+ --> tests/ui/env-usage/env-usage.rs:8:26
+  |
+8 |     #[argy(option, env = "DUP_ONE", env = "DUP_TWO")]
+  |                          ^^^^^^^^^
+
+error: `env` may not be specified on repeating `#[argy(option)]` fields
+  --> tests/ui/env-usage/env-usage.rs:12:26
+   |
+12 |     #[argy(option, env = "VEC_ENV")]
+   |                          ^^^^^^^^^
+
+error[E0308]: mismatched types
+ --> tests/ui/env-usage/env-usage.rs:2:10
+  |
+2 | #[derive(argy::FromArgs)]
+  |          ^^^^^^^^^^^^^^
+  |          |
+  |          expected `Vec<String>`, found `Option<String>`
+  |          expected due to the type of this binding
+  |
+  = note: expected struct `Vec<String>`
+               found enum `std::option::Option<String>`
+  = note: this error originates in the derive macro `argy::FromArgs` (in Nightly builds, run with -Z macro-backtrace for more info)

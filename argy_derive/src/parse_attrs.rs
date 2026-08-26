@@ -23,6 +23,10 @@ pub struct FieldAttrs {
     pub short: Option<syn::LitChar>,
     pub arg_name: Option<syn::LitStr>,
     pub greedy: Option<syn::Path>,
+    /// Environment variable that supplies the value when the option/switch is
+    /// not provided on the command line. Only valid on `#[argy(option)]` and
+    /// `#[argy(switch)]` fields.
+    pub env: Option<syn::LitStr>,
     /// Whether a greedy positional must be provided at least once.
     /// Only valid on `#[argy(positional, greedy)]` fields.
     pub required: bool,
@@ -117,6 +121,10 @@ impl FieldAttrs {
                     if let Some(m) = errors.expect_meta_name_value(&meta) {
                         parse_attr_description(errors, m, &mut this.description);
                     }
+                } else if name.is_ident("env") {
+                    if let Some(m) = errors.expect_meta_name_value(&meta) {
+                        this.parse_attr_env(errors, m);
+                    }
                 } else if name.is_ident("from_str_fn") {
                     if let Some(m) = errors.expect_meta_list(&meta) {
                         this.parse_attr_from_str_fn(errors, m);
@@ -164,7 +172,7 @@ impl FieldAttrs {
                         &meta,
                         concat!(
                             "Invalid field-level `argy` attribute\n",
-                            "Expected one of: `alias`, `arg_name`, `conflicts_with`, `default`, `description`, `from_str_fn`, `global`, ",
+                            "Expected one of: `alias`, `arg_name`, `conflicts_with`, `default`, `description`, `env`, `from_str_fn`, `global`, ",
                             "`greedy`, `long`, `option`, `required`, `short`, `subcommand`, `switch`, `hidden_help`, `usage`",
                         ),
                     );
@@ -254,6 +262,17 @@ impl FieldAttrs {
             }
         }
 
+        if let Some(env) = &this.env {
+            match this.field_type.as_ref().map(|f| f.kind) {
+                Some(FieldKind::Option | FieldKind::Switch) => {}
+                _ => errors.err(
+                    env,
+                    "`env` may only be specified on `#[argy(option)]` \
+                     or `#[argy(switch)]` fields",
+                ),
+            }
+        }
+
         if let Some(d) = &this.description {
             check_option_description(errors, d.content.value().trim(), d.content.span());
         }
@@ -267,6 +286,10 @@ impl FieldAttrs {
 
     fn parse_attr_default(&mut self, errors: &Errors, m: &syn::MetaNameValue) {
         parse_attr_single_string(errors, m, "default", &mut self.default);
+    }
+
+    fn parse_attr_env(&mut self, errors: &Errors, m: &syn::MetaNameValue) {
+        parse_attr_single_string(errors, m, "env", &mut self.env);
     }
 
     fn parse_attr_arg_name(&mut self, errors: &Errors, m: &syn::MetaNameValue) {

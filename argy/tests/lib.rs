@@ -906,6 +906,115 @@ fn missing_option_value() {
     assert!(e.status.is_err());
 }
 
+#[test]
+fn env_provides_value_when_flag_absent() {
+    #[derive(FromArgs, PartialEq, Debug)]
+    /// Short description
+    struct Cmd {
+        #[argy(option, env = "ARGY_TEST_ENV_OPT_VALUE")]
+        /// fooey
+        x: String,
+    }
+
+    std::env::set_var("ARGY_TEST_ENV_OPT_VALUE", "from-env");
+    let cmd = Cmd::from_args(&["cmdname"], &[]).unwrap();
+    std::env::remove_var("ARGY_TEST_ENV_OPT_VALUE");
+    assert_eq!(cmd.x, "from-env");
+}
+
+#[test]
+fn env_cli_value_takes_precedence() {
+    #[derive(FromArgs, PartialEq, Debug)]
+    /// Short description
+    struct Cmd {
+        #[argy(option, env = "ARGY_TEST_ENV_OPT_CLI")]
+        /// fooey
+        x: String,
+    }
+
+    std::env::set_var("ARGY_TEST_ENV_OPT_CLI", "from-env");
+    let cmd = Cmd::from_args(&["cmdname"], &["--x", "from-cli"]).unwrap();
+    std::env::remove_var("ARGY_TEST_ENV_OPT_CLI");
+    assert_eq!(cmd.x, "from-cli");
+}
+
+#[test]
+fn env_satisfies_required_option() {
+    #[derive(FromArgs, PartialEq, Debug)]
+    /// Short description
+    struct Cmd {
+        #[argy(option, env = "ARGY_TEST_ENV_OPT_REQUIRED")]
+        /// fooey
+        x: u32,
+    }
+
+    std::env::set_var("ARGY_TEST_ENV_OPT_REQUIRED", "42");
+    let cmd = Cmd::from_args(&["cmdname"], &[]).unwrap();
+    std::env::remove_var("ARGY_TEST_ENV_OPT_REQUIRED");
+    assert_eq!(cmd.x, 42);
+}
+
+#[test]
+#[cfg(feature = "help")]
+fn env_missing_required_when_neither_source_present() {
+    #[derive(FromArgs, Debug)]
+    /// Short description
+    struct Cmd {
+        #[argy(option, env = "ARGY_TEST_ENV_OPT_NEITHER")]
+        /// fooey
+        _x: u32,
+    }
+
+    std::env::remove_var("ARGY_TEST_ENV_OPT_NEITHER");
+    let e = Cmd::from_args(&["cmdname"], &[]).expect_err("should fail");
+    assert!(e.status.is_err());
+    assert_eq!(
+        e.output,
+        r"Required options not provided:
+    --x
+Usage: cmdname --x <x>
+
+Short description
+
+Options:
+  --x           fooey
+  --help, help  display usage information
+",
+    );
+}
+
+#[test]
+fn env_sets_switch_true() {
+    #[derive(FromArgs, PartialEq, Debug)]
+    /// Short description
+    struct Cmd {
+        #[argy(switch, env = "ARGY_TEST_ENV_SWITCH_TRUE")]
+        /// fooey
+        verbose: bool,
+    }
+
+    std::env::set_var("ARGY_TEST_ENV_SWITCH_TRUE", "1");
+    let cmd = Cmd::from_args(&["cmdname"], &[]).unwrap();
+    std::env::remove_var("ARGY_TEST_ENV_SWITCH_TRUE");
+    assert!(cmd.verbose);
+}
+
+#[test]
+fn env_switch_falsy_value_leaves_unset() {
+    #[derive(FromArgs, PartialEq, Debug)]
+    /// Short description
+    struct Cmd {
+        #[argy(switch, env = "ARGY_TEST_ENV_SWITCH_FALSE")]
+        /// fooey
+        verbose: bool,
+    }
+
+    std::env::set_var("ARGY_TEST_ENV_SWITCH_FALSE", "0");
+    let cmd = Cmd::from_args(&["cmdname"], &[]).unwrap();
+    std::env::remove_var("ARGY_TEST_ENV_SWITCH_FALSE");
+    assert!(!cmd.verbose);
+}
+
 #[cfg(feature = "help")]
 fn assert_help_string<T: FromArgs>(help_str: &str) {
     match T::from_args(&["test_arg_0"], &["--help"]) {

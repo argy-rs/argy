@@ -238,6 +238,23 @@ impl<'a> StructField<'a> {
             FieldKind::SubCommand | FieldKind::Positional => None,
         };
 
+        if let Some(env) = &attrs.env {
+            match kind {
+                FieldKind::Option
+                    if matches!(
+                        optionality,
+                        Optionality::Repeating | Optionality::DefaultedRepeating(_)
+                    ) =>
+                {
+                    errors.err(
+                        env,
+                        "`env` may not be specified on repeating `#[argy(option)]` fields",
+                    );
+                }
+                _ => {}
+            }
+        }
+
         Some(StructField { field, attrs, name, kind, ty_without_wrapper, optionality, long_name })
     }
 
@@ -384,6 +401,8 @@ fn impl_from_args_struct_from_args<'a>(
 
     let missing_requirements_ident = syn::Ident::new("__missing_requirements", impl_span);
 
+    let env_fill = env_fill_fields(fields);
+
     let append_missing_requirements =
         append_missing_requirements(&missing_requirements_ident, fields);
 
@@ -458,6 +477,8 @@ fn impl_from_args_struct_from_args<'a>(
                 &|| __usage.clone(),
                 #version_func,
             )?;
+
+            #( #env_fill )*
 
             let mut #missing_requirements_ident = argy::MissingRequirements::default();
             #(
@@ -891,6 +912,69 @@ fn unwrap_from_args_fields<'a>(
             },
         }
     })
+}
+
+/// Fill `env`-sourced option/switch slots that were not provided on the command
+/// line. Runs after CLI parsing so a CLI value always takes precedence, and
+/// before missing-requirement checks so a required option satisfied by its env
+/// var is not reported missing. Each statement references the matching slot in
+/// the `__seen` array (indexed by option/switch field order).
+fn env_fill_fields<'a>(fields: &'a [StructField<'a>]) -> Vec<TokenStream> {
+    let mut out = Vec::new();
+    let mut option_slot_index = 0usize;
+    for field in fields {
+        match field.kind {
+            FieldKind::Option | FieldKind::Switch => {
+                let idx = option_slot_index;
+                option_slot_index += 1;
+                let Some(env) = &field.attrs.env else {
+                    continue;
+                };
+                let name = field.name;
+                let env_lit = syn::LitStr::new(&env.value(), env.span());
+                let env_name = &env.value();
+                match field.kind {
+                    FieldKind::Option => {
+                        // Non-repeating options are guaranteed by `StructField::new`.
+                        out.push(quote! {
+                            if !__seen[#idx] {
+                                if let ::core::result::Result::Ok(__env_val) =
+                                    ::std::env::var(#env_lit)
+                                {
+                                    if let ::core::result::Result::Ok(__env_parsed) =
+                                        (#name.parse_func)(#env_name, &__env_val)
+                                    {
+                                        #name.slot = ::core::option::Option::Some(__env_parsed);
+                                    }
+                                }
+                            }
+                        });
+                    }
+                    FieldKind::Switch => {
+                        out.push(quote! {
+                            if !__seen[#idx] {
+                                if let ::core::result::Result::Ok(__env_val) =
+                                    ::std::env::var(#env_lit)
+                                {
+                                    let __env_truthy = match __env_val.to_ascii_lowercase().as_str()
+                                    {
+                                        "0" | "false" | "f" | "no" | "n" | "off" | "" => false,
+                                        _ => true,
+                                    };
+                                    if __env_truthy {
+                                        argy::Flag::set_flag(&mut #name);
+                                    }
+                                }
+                            }
+                        });
+                    }
+                    FieldKind::SubCommand | FieldKind::Positional => unreachable!(),
+                }
+            }
+            FieldKind::SubCommand | FieldKind::Positional => {}
+        }
+    }
+    out
 }
 
 /// Declare a local slots to store each field in during parsing.

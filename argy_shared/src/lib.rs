@@ -58,6 +58,8 @@ pub struct CommandInfoWithArgs<'a> {
     /// Whether this command should be hidden from help and completion output.
     /// Hidden commands remain invocable but are not listed.
     pub hidden: bool,
+    /// Alternative names for the command (aliases).
+    pub aliases: &'a [&'a str],
 }
 
 impl Default for CommandInfoWithArgs<'_> {
@@ -73,6 +75,7 @@ impl Default for CommandInfoWithArgs<'_> {
             positionals: Default::default(),
             error_codes: Default::default(),
             hidden: false,
+            aliases: Default::default(),
         }
     }
 }
@@ -135,6 +138,8 @@ pub struct FlagInfo<'a> {
     /// `false` indicates this argument will not appear
     /// in the help message.
     pub hidden: bool,
+    /// Alternative long names for the flag (aliases).
+    pub aliases: &'a [&'a str],
 }
 
 /// The kind of flags.

@@ -20,6 +20,7 @@ const HELP_FLAG: FlagInfo<'_> = FlagInfo {
     short: None,
     description: "display usage information",
     hidden: false,
+    aliases: &[],
 };
 
 /// Tests that exercise the JSON output for help text.
@@ -70,6 +71,7 @@ fn args_info_test_subcommand() {
                 short: None,
                 description: "how many x",
                 hidden: false,
+                aliases: &[],
             },
         ],
         ..Default::default()
@@ -85,6 +87,7 @@ fn args_info_test_subcommand() {
         positionals: &[],
         error_codes: &[],
         hidden: false,
+        aliases: &[],
         commands: vec![
             SubCommandInfo { name: "one", command: command_one.clone() },
             SubCommandInfo {
@@ -102,6 +105,7 @@ fn args_info_test_subcommand() {
                             short: None,
                             description: "whether to fooey",
                             hidden: false,
+                            aliases: &[],
                         },
                     ],
                     ..Default::default()
@@ -137,8 +141,9 @@ fn args_info_test_multiline_doc_comment() {
                     long: "--s",
                     short: None,
                     description: "a switch with a description that is spread across a number of lines of comments.",
-                    hidden:false
-                }
+                    hidden:false,
+                                aliases: &[],
+}
                 ],
            ..Default::default()
             });
@@ -179,6 +184,7 @@ fn args_info_test_basic_args() {
                 short: None,
                 description: "display usage information",
                 hidden: false,
+                aliases: &[],
             },
             FlagInfo {
                 kind: FlagInfoKind::Switch,
@@ -187,6 +193,7 @@ fn args_info_test_basic_args() {
                 short: None,
                 description: "should the power be on. \"Quoted value\" should work too.",
                 hidden: false,
+                aliases: &[],
             },
             FlagInfo {
                 kind: FlagInfoKind::Option { arg_name: "required" },
@@ -195,6 +202,7 @@ fn args_info_test_basic_args() {
                 short: None,
                 description: "option that is required because of no default and not Option<>.",
                 hidden: false,
+                aliases: &[],
             },
             FlagInfo {
                 kind: FlagInfoKind::Option { arg_name: "speed" },
@@ -203,6 +211,7 @@ fn args_info_test_basic_args() {
                 short: Some('s'),
                 description: "optional speed if not specified it is None.",
                 hidden: false,
+                aliases: &[],
             },
             FlagInfo {
                 kind: FlagInfoKind::Option { arg_name: "url" },
@@ -211,6 +220,7 @@ fn args_info_test_basic_args() {
                 short: None,
                 description: "repeatable option.",
                 hidden: false,
+                aliases: &[],
             },
         ],
         ..Default::default()
@@ -294,6 +304,7 @@ fn args_info_test_optional_positional_args() {
             short: None,
             description: "display usage information",
             hidden: false,
+            aliases: &[],
         }],
         positionals: &[
             PositionalInfo {
@@ -503,6 +514,7 @@ fn args_info_test_subcommands() {
                 short: None,
                 description: "show verbose output",
                 hidden: false,
+                aliases: &[],
             },
         ],
         positionals: &[],
@@ -553,6 +565,7 @@ fn args_info_test_subcommands() {
                             description:
                                 "should the power be on. \"Quoted value\" should work too.",
                             hidden: false,
+                            aliases: &[],
                         },
                         FlagInfo {
                             kind: FlagInfoKind::Option { arg_name: "required" },
@@ -562,6 +575,7 @@ fn args_info_test_subcommands() {
                             description:
                                 "option that is required because of no default and not Option<>.",
                             hidden: false,
+                            aliases: &[],
                         },
                         FlagInfo {
                             kind: FlagInfoKind::Option { arg_name: "speed" },
@@ -570,6 +584,7 @@ fn args_info_test_subcommands() {
                             short: Some('s'),
                             description: "optional speed if not specified it is None.",
                             hidden: false,
+                            aliases: &[],
                         },
                         FlagInfo {
                             kind: FlagInfoKind::Option { arg_name: "url" },
@@ -578,6 +593,7 @@ fn args_info_test_subcommands() {
                             short: None,
                             description: "repeatable option.",
                             hidden: false,
+                            aliases: &[],
                         },
                     ],
                     ..Default::default()
@@ -758,14 +774,14 @@ fn args_info_test_example() {
                 examples: &["Scribble 'abc' and then run |grind|.\n$ {command_name} -s 'abc' grind old.txt taxes.cp"],
                 flags: &[HELP_FLAG,
                 FlagInfo { kind: FlagInfoKind::Switch, optionality: Optionality::Optional, long: "--force", short: Some('f'), description: "force, ignore minor errors. This description is so long that it wraps to the next line.",
-                hidden:false },
+                hidden:false , aliases: &[]},
                 FlagInfo { kind: FlagInfoKind::Switch, optionality: Optionality::Optional, long: "--really-really-really-long-name-for-pat", short: None, description: "documentation",
-                hidden:false },
+                hidden:false , aliases: &[]},
                 FlagInfo { kind: FlagInfoKind::Option { arg_name: "scribble"},
                  optionality: Optionality::Required, long: "--scribble", short: Some('s'), description: "write <scribble> repeatedly",
-                 hidden:false },
+                 hidden:false , aliases: &[]},
                   FlagInfo { kind: FlagInfoKind::Switch, optionality: Optionality::Optional, long: "--verbose", short: Some('v'), description: "say more. Defaults to $BLAST_VERBOSE.",
-                  hidden:false }
+                  hidden:false , aliases: &[]}
                 ],
                 notes: &["Use `{command_name} help <command>` for details on [<args>] for a subcommand."],
                 commands: vec![
@@ -775,7 +791,7 @@ fn args_info_test_example() {
                   description: "explosively separate", 
                   flags:& [HELP_FLAG,
                    FlagInfo { kind: FlagInfoKind::Switch, optionality: Optionality::Optional, long: "--safely", short: None, description: "blow up bombs safely",
-                   hidden:false }
+                   hidden:false , aliases: &[]}
                    ],
                 ..Default::default()
              } },
@@ -785,7 +801,7 @@ fn args_info_test_example() {
                      name: "grind",
                      description: "make smaller by many small cuts",
                      flags: &[HELP_FLAG,
-                      FlagInfo { kind: FlagInfoKind::Switch, optionality: Optionality::Optional, long: "--safely", short: None, description: "wear a visor while grinding" ,hidden:false}],
+                      FlagInfo { kind: FlagInfoKind::Switch, optionality: Optionality::Optional, long: "--safely", short: None, description: "wear a visor while grinding" ,hidden:false, aliases: &[]}],
                       ..Default::default()
                      }
                 }],
@@ -827,6 +843,7 @@ fn positional_greedy() {
                 short: None,
                 description: "woo",
                 hidden: false,
+                aliases: &[],
             },
             FlagInfo {
                 kind: FlagInfoKind::Option { arg_name: "c" },
@@ -835,6 +852,7 @@ fn positional_greedy() {
                 short: None,
                 description: "stuff",
                 hidden: false,
+                aliases: &[],
             },
         ],
         positionals: &[
@@ -883,6 +901,7 @@ fn hidden_help_attribute() {
                 short: None,
                 description: "this one should be hidden",
                 hidden: true,
+                aliases: &[],
             },
         ],
         positionals: &[
@@ -1019,6 +1038,7 @@ fn test_dynamic_subcommand() {
                             short: None,
                             description: "how many x",
                             hidden: false,
+                            aliases: &[],
                         },
                     ],
                     ..Default::default()
@@ -1039,6 +1059,7 @@ fn test_dynamic_subcommand() {
                             short: None,
                             description: "whether to fooey",
                             hidden: false,
+                            aliases: &[],
                         },
                     ],
                     ..Default::default()
@@ -1092,4 +1113,104 @@ fn ok_hygiene() {
         #[argy(option)]
         input: String,
     }
+}
+/// Renders a command tree (like a `reference` subcommand) from the public
+/// introspection API, exercising nested subcommands, options, switches,
+/// positionals, and aliases.
+#[test]
+fn args_info_render_nested_reference_tree() {
+    use std::fmt::Write;
+
+    #[allow(dead_code)]
+    #[derive(FromArgs, ArgsInfo)]
+    /// Reference a repository and its remotes.
+    struct Repo {
+        /// remote url to clone from
+        #[argy(option)]
+        url: String,
+        /// recurse into submodules
+        #[argy(switch, alias = "recursive")]
+        recurse: bool,
+        /// the command to run
+        #[argy(subcommand)]
+        cmd: RepoCmd,
+    }
+
+    #[allow(dead_code)]
+    #[derive(FromArgs, ArgsInfo)]
+    #[argy(subcommand)]
+    enum RepoCmd {
+        Remote(RemoteCmd),
+    }
+
+    #[allow(dead_code)]
+    #[derive(FromArgs, ArgsInfo)]
+    /// Manage git remotes.
+    #[argy(subcommand, name = "remote", alias = "r")]
+    struct RemoteCmd {
+        /// remote name
+        #[argy(positional)]
+        name: String,
+        /// remote subcommand
+        #[argy(subcommand)]
+        action: RemoteAction,
+    }
+
+    #[allow(dead_code)]
+    #[derive(FromArgs, ArgsInfo)]
+    #[argy(subcommand)]
+    enum RemoteAction {
+        Add(AddCmd),
+    }
+
+    #[allow(dead_code)]
+    #[derive(FromArgs, ArgsInfo)]
+    /// Add a remote.
+    #[argy(subcommand, name = "add", alias = "a")]
+    struct AddCmd {
+        /// fetch after add
+        #[argy(switch, alias = "get")]
+        fetch: bool,
+    }
+
+    fn render(out: &mut String, cmd: &CommandInfoWithArgs, depth: usize) {
+        let indent = "  ".repeat(depth);
+        writeln!(out, "{indent}## {}", cmd.name).unwrap();
+        if !cmd.description.is_empty() {
+            writeln!(out, "{indent}About: {}", cmd.description).unwrap();
+        }
+        if !cmd.aliases.is_empty() {
+            writeln!(out, "{indent}Aliases: {}", cmd.aliases.join(", ")).unwrap();
+        }
+        for flag in cmd.flags {
+            write!(out, "{indent}Flag {}", flag.long).unwrap();
+            if let Some(short) = flag.short {
+                write!(out, " (-{short})").unwrap();
+            }
+            if !flag.aliases.is_empty() {
+                write!(out, " [aliases: {}]", flag.aliases.join(", ")).unwrap();
+            }
+            writeln!(out).unwrap();
+        }
+        for pos in cmd.positionals {
+            writeln!(out, "{indent}Positional {}", pos.name).unwrap();
+        }
+        for sub in &cmd.commands {
+            render(out, &sub.command, depth + 1);
+        }
+    }
+
+    let mut rendered = String::new();
+    render(&mut rendered, &Repo::get_args_info(), 0);
+
+    // The top-level command: name, about, option, and a switch with an alias.
+    assert!(rendered.contains("## Repo\nAbout: Reference a repository and its remotes."));
+    assert!(rendered.contains("Flag --url"));
+    assert!(rendered.contains("Flag --recurse [aliases: --recursive]"));
+    // Nested subcommand with a command alias and a positional.
+    assert!(rendered.contains("  ## remote\n  About: Manage git remotes.\n  Aliases: r"));
+    assert!(rendered.contains("  Positional name"));
+    // Deeper nesting: alias on a sub-subcommand and on a switch.
+    assert!(rendered.contains("    ## add\n    About: Add a remote.\n    Aliases: a"));
+    assert!(rendered.contains("Flag --fetch [aliases: --get]"));
 }

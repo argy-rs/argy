@@ -152,6 +152,7 @@ fn impl_arg_info_enum(
                     short: s.short,
                     description: s.description,
                     hidden: s.hidden,
+                    aliases: s.aliases,
                     ..Default::default()
                 }
             }).collect()
@@ -230,7 +231,8 @@ fn impl_args_info_data<'a>(
             description: "display usage information",
             optionality: argy::Optionality::Optional,
             kind: argy::FlagInfoKind::Switch,
-            hidden: false
+            hidden: false,
+            aliases: &[],
         }
     });
 
@@ -308,6 +310,12 @@ fn impl_args_info_data<'a>(
 
                 let hidden = field.attrs.hidden_help;
 
+                let flag_aliases = field.attrs.aliases.iter().map(|lit| {
+                    let s = format!("--{}", lit.value());
+                    syn::LitStr::new(&s, lit.span())
+                });
+                let flag_aliases = quote! { &[#( #flag_aliases, )*] };
+
                 flags.push(quote! {
                     argy::FlagInfo {
                         short: #short,
@@ -316,6 +324,7 @@ fn impl_args_info_data<'a>(
                         optionality: #optionality,
                         kind: #kind,
                         hidden: #hidden,
+                        aliases: #flag_aliases,
                     }
                 });
             }
@@ -357,6 +366,8 @@ fn impl_args_info_data<'a>(
         type_attrs.short.as_ref().map_or_else(|| quote! { &'\0' }, |id| quote! { &#id });
 
     let hidden = type_attrs.hidden;
+    let aliases = type_attrs.aliases.iter().map(|lit| syn::LitStr::new(&lit.value(), lit.span()));
+    let aliases = quote! { &[#( #aliases, )*] };
 
     quote_spanned! { impl_span =>
         argy::CommandInfoWithArgs {
@@ -370,6 +381,7 @@ fn impl_args_info_data<'a>(
             commands: #subcommand,
             error_codes: &[#( #error_codes, )*],
             hidden: #hidden,
+            aliases: #aliases,
         }
     }
 }

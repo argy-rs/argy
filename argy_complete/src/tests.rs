@@ -56,6 +56,7 @@ fn make_mock_command() -> CommandInfoWithArgs<'static> {
             short: Some('v'),
             description: "verbose output",
             hidden: false,
+            aliases: &[],
         }],
         commands: vec![
             SubCommandInfo { name: "subcmd", command: subcmd_info },

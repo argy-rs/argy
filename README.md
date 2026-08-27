@@ -242,6 +242,55 @@ struct SubCommandTwo {
 }
 ```
 
+## Command-tree introspection
+
+`#[derive(ArgsInfo)]` (alongside `#[derive(FromArgs)]`) exposes the parsed
+command structure at runtime, so an app can render a reference or feed shell
+completion generation without parsing `--help` output. It implements the
+`argy::ArgsInfo` trait:
+
+```rust,no_run
+use argy::ArgsInfo;
+
+let tree: argy::CommandInfoWithArgs = MyCommand::get_args_info();
+```
+
+`get_args_info()` returns an `argy::CommandInfoWithArgs` — the same
+`argy_shared` type consumed by the completion generators — carrying the
+command `name`, `description` (the "about" text), `aliases`, `flags` (options
+and switches), `positionals`, and nested `commands`. Each subcommand is a
+`SubCommandInfo` whose `command` is itself a `CommandInfoWithArgs`, so the
+tree is fully nested and can be walked recursively to render a reference:
+
+```rust,no_run
+use argy::{ArgsInfo, CommandInfoWithArgs};
+use std::fmt::Write;
+
+fn render_reference(out: &mut String, cmd: &CommandInfoWithArgs) {
+    writeln!(out, "# {}", cmd.name).unwrap();
+    for alias in cmd.aliases {
+        writeln!(out, "  alias: {alias}").unwrap();
+    }
+    for flag in cmd.flags {
+        let mut line = String::from(flag.long);
+        for alias in flag.aliases {
+            write!(line, " / {alias}").unwrap();
+        }
+        writeln!(out, "  flag: {line}").unwrap();
+    }
+    for sub in &cmd.commands {
+        render_reference(out, &sub.command);
+    }
+}
+```
+
+The introspection covers every element of the command tree: options
+(`FlagInfoKind::Option`), switches (`FlagInfoKind::Switch`), positionals
+(`PositionalInfo`), nested subcommands, and aliases — both command aliases (on
+`CommandInfoWithArgs::aliases`, the alternative names accepted for a
+subcommand) and flag aliases (on `FlagInfo::aliases`, given as
+`--`-prefixed long names).
+
 ## Advanced Description
 
 You can define a complex help output that includes an **Examples** section.

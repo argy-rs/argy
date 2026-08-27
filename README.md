@@ -137,6 +137,31 @@ struct FiveStruct {
     five: usize,
 }
 
+## Value delimiter
+
+A repeating `#[argy(option)]` field wrapped in `Vec` can be filled from a
+single value by supplying a `value_delimiter` character, mirroring clap's
+`value_delimiter`. When set, a supplied value is split on that character and
+each piece is parsed and pushed onto the `Vec`; repeated flags still append.
+Empty segments between (or trailing) delimiters are preserved, matching clap —
+so an empty segment fails to parse for numeric element types.
+
+```rust
+use argy::FromArgs;
+
+#[derive(FromArgs)]
+/// A command that takes a comma-separated list of heights.
+struct GoUp {
+    /// comma-separated heights, e.g. `--heights 1,2,3`
+    #[argy(option, value_delimiter = ',')]
+    heights: Vec<usize>,
+}
+```
+
+`--heights 1,2,3` parses `heights` as `[1, 2, 3]`, and
+`--heights 1,2 --heights 3` also yields `[1, 2, 3]`. `value_delimiter` is only
+valid on repeating (Vec) `#[argy(option)]` fields.
+
 ## Optional-value options
 
 An option declared with `optional_value` may be provided either bare (with no

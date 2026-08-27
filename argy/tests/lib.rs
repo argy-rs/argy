@@ -1339,6 +1339,61 @@ Options:
     }
 }
 
+mod value_delimiter {
+    use super::*;
+
+    #[derive(FromArgs, Debug, PartialEq)]
+    /// Woot
+    struct CommaSplit {
+        #[argy(option, long = "nums", value_delimiter = ',')]
+        /// fooey
+        nums: Vec<usize>,
+    }
+
+    #[test]
+    fn comma_split_vec() {
+        assert_output(&["--nums", "1,2,3"], CommaSplit { nums: vec![1, 2, 3] });
+    }
+
+    #[test]
+    fn repeated_flags_append() {
+        assert_output(&["--nums", "1,2", "--nums", "3"], CommaSplit { nums: vec![1, 2, 3] });
+    }
+
+    #[test]
+    fn trailing_delimiter_keeps_trailing_empty() {
+        assert_output(
+            &["--tags", "a,b,"],
+            TagList { tags: vec!["a".into(), "b".into(), String::new()] },
+        );
+    }
+
+    #[derive(FromArgs, Debug, PartialEq)]
+    /// Woot
+    struct TagList {
+        #[argy(option, long = "tags", value_delimiter = ',')]
+        /// fooey
+        tags: Vec<String>,
+    }
+
+    #[test]
+    fn empty_delimiter_keeps_empty_values() {
+        assert_output(
+            &["--tags", "a,,b"],
+            TagList { tags: vec!["a".into(), String::new(), "b".into()] },
+        );
+    }
+
+    #[test]
+    fn empty_middle_delimiter_errors_for_numeric() {
+        assert_error::<CommaSplit>(
+            &["--nums", "1,,2"],
+            r"Error parsing option '--nums' with value '1,,2': cannot parse integer from empty string
+",
+        );
+    }
+}
+
 mod positional {
     use super::*;
 

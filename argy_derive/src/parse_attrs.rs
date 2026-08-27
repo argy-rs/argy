@@ -56,6 +56,10 @@ pub struct FieldAttrs {
     /// this one is provided. Violating a requirement is a usage error. Only
     /// valid on `#[argy(option)]` and `#[argy(switch)]` fields.
     pub requires: Vec<syn::LitStr>,
+    /// A single character that splits one supplied value into several. When
+    /// set on a repeating `#[argy(option)]` `Vec` field, a value like `a,b,c`
+    /// is parsed as three values `a`, `b`, `c` (clap `value_delimiter` parity).
+    pub value_delimiter: Option<syn::LitChar>,
 }
 
 /// The purpose of a particular field on a `#![derive(FromArgs)]` struct.
@@ -201,13 +205,17 @@ impl FieldAttrs {
                     this.hidden_help = true;
                 } else if name.is_ident("usage") {
                     this.usage = true;
+                } else if name.is_ident("value_delimiter") {
+                    if let Some(m) = errors.expect_meta_name_value(&meta) {
+                        this.parse_attr_value_delimiter(errors, m);
+                    }
                 } else {
                     errors.err(
                         &meta,
                         concat!(
                             "Invalid field-level `argy` attribute\n",
                             "Expected one of: `alias`, `arg_name`, `conflicts_with`, `default`, `default_missing_value`, `description`, `env`, `from_str_fn`, `global`, ",
-                            "`greedy`, `last`, `long`, `option`, `optional_value`, `required`, `requires`, `short`, `subcommand`, `switch`, `hidden_help`, `usage`",
+                            "`greedy`, `last`, `long`, `option`, `optional_value`, `required`, `requires`, `short`, `subcommand`, `switch`, `hidden_help`, `usage`, `value_delimiter`",
                         ),
                     );
                 }
@@ -340,6 +348,14 @@ impl FieldAttrs {
             }
         }
 
+        if let Some(vd) = &this.value_delimiter {
+            match this.field_type.as_ref().map(|f| f.kind) {
+                Some(FieldKind::Option) => {}
+                _ => errors
+                    .err(vd, "`value_delimiter` may only be specified on `#[argy(option)]` fields"),
+            }
+        }
+
         if let Some(env) = &this.env {
             match this.field_type.as_ref().map(|f| f.kind) {
                 Some(FieldKind::Option | FieldKind::Switch) => {}
@@ -389,6 +405,14 @@ impl FieldAttrs {
             if !lit_char.value().is_ascii() {
                 errors.err(lit_char, "Short names must be ASCII");
             }
+        }
+    }
+
+    fn parse_attr_value_delimiter(&mut self, errors: &Errors, m: &syn::MetaNameValue) {
+        if let Some(first) = &self.value_delimiter {
+            errors.duplicate_attrs("value_delimiter", first, m);
+        } else if let Some(lit_char) = errors.expect_lit_char(&m.value) {
+            self.value_delimiter = Some(lit_char.clone());
         }
     }
 }

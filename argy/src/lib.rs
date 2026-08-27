@@ -1046,6 +1046,10 @@ pub struct ParseValueSlotTy<Slot, T> {
     pub slot: Slot,
     // The function to parse the value from a string
     pub parse_func: fn(&str, &str) -> Result<T, String>,
+    // The delimiter on which a single supplied value is split into several
+    // (clap `value_delimiter` parity). Only meaningful for repeating `Vec`
+    // slots; when `None` the whole value is parsed as one item.
+    pub value_delimiter: Option<char>,
 }
 
 // `ParseValueSlotTy<Option<T>, T>` is used as the slot for all non-repeating
@@ -1063,7 +1067,13 @@ impl<T> ParseValueSlot for ParseValueSlotTy<Option<T>, T> {
 // `ParseValueSlotTy<Vec<T>, T>` is used as the slot for repeating arguments.
 impl<T> ParseValueSlot for ParseValueSlotTy<Vec<T>, T> {
     fn fill_slot(&mut self, arg: &str, value: &str) -> Result<(), String> {
-        self.slot.push((self.parse_func)(arg, value)?);
+        if let Some(d) = self.value_delimiter {
+            for piece in value.split(d) {
+                self.slot.push((self.parse_func)(arg, piece)?);
+            }
+        } else {
+            self.slot.push((self.parse_func)(arg, value)?);
+        }
         Ok(())
     }
 }
@@ -1071,7 +1081,14 @@ impl<T> ParseValueSlot for ParseValueSlotTy<Vec<T>, T> {
 // `ParseValueSlotTy<Option<Vec<T>>, T>` is used as the slot for optional repeating arguments.
 impl<T> ParseValueSlot for ParseValueSlotTy<Option<Vec<T>>, T> {
     fn fill_slot(&mut self, arg: &str, value: &str) -> Result<(), String> {
-        self.slot.get_or_insert_with(Vec::new).push((self.parse_func)(arg, value)?);
+        let vec = self.slot.get_or_insert_with(Vec::new);
+        if let Some(d) = self.value_delimiter {
+            for piece in value.split(d) {
+                vec.push((self.parse_func)(arg, piece)?);
+            }
+        } else {
+            vec.push((self.parse_func)(arg, value)?);
+        }
         Ok(())
     }
 }

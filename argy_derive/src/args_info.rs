@@ -9,6 +9,25 @@ use crate::{
     parse_attrs::{check_enum_type_attrs, FieldAttrs, FieldKind, TypeAttrs, VariantAttrs},
     Optionality, StructField,
 };
+/// If `ty` is a `Box<T>` (any spelling), return `T`; otherwise return `ty`.
+/// Subcommand enum variants are often `Box<T>` to keep the enum small; `get_args_info`
+/// must be called on the inner type.
+fn strip_box(ty: &syn::Type) -> &syn::Type {
+    if let syn::Type::Path(path) = ty {
+        if path.qself.is_none() {
+            if let Some(seg) = path.path.segments.last() {
+                if seg.ident == "Box" {
+                    if let syn::PathArguments::AngleBracketed(args) = &seg.arguments {
+                        if let Some(syn::GenericArgument::Type(inner)) = args.args.first() {
+                            return inner;
+                        }
+                    }
+                }
+            }
+        }
+    }
+    ty
+}
 use proc_macro2::{Span, TokenStream};
 use quote::{quote, quote_spanned, ToTokens};
 use syn::LitStr;
@@ -162,7 +181,7 @@ fn impl_arg_info_enum(
     };
 
     let variant_ty_info = variants.iter().map(|t| {
-        let ty = t.ty;
+        let ty = strip_box(t.ty);
         quote!(
             argy::SubCommandInfo {
                 name: #ty::get_args_info().name,

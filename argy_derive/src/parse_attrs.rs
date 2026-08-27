@@ -52,6 +52,10 @@ pub struct FieldAttrs {
     /// exclusive. Passing both is a parse error. Only valid on
     /// `#[argy(option)]` and `#[argy(switch)]` fields.
     pub conflicts_with: Vec<syn::LitStr>,
+    /// Long names of other options/switches that must also be present whenever
+    /// this one is provided. Violating a requirement is a usage error. Only
+    /// valid on `#[argy(option)]` and `#[argy(switch)]` fields.
+    pub requires: Vec<syn::LitStr>,
 }
 
 /// The purpose of a particular field on a `#![derive(FromArgs)]` struct.
@@ -119,6 +123,10 @@ impl FieldAttrs {
                 } else if name.is_ident("conflicts_with") {
                     if let Some(m) = errors.expect_meta_name_value(&meta) {
                         parse_attr_multi_string(errors, m, &mut this.conflicts_with);
+                    }
+                } else if name.is_ident("requires") {
+                    if let Some(m) = errors.expect_meta_name_value(&meta) {
+                        parse_attr_requires(errors, m, &mut this.requires);
                     }
                 } else if name.is_ident("arg_name") {
                     if let Some(m) = errors.expect_meta_name_value(&meta) {
@@ -199,7 +207,7 @@ impl FieldAttrs {
                         concat!(
                             "Invalid field-level `argy` attribute\n",
                             "Expected one of: `alias`, `arg_name`, `conflicts_with`, `default`, `default_missing_value`, `description`, `env`, `from_str_fn`, `global`, ",
-                            "`greedy`, `last`, `long`, `option`, `optional_value`, `required`, `short`, `subcommand`, `switch`, `hidden_help`, `usage`",
+                            "`greedy`, `last`, `long`, `option`, `optional_value`, `required`, `requires`, `short`, `subcommand`, `switch`, `hidden_help`, `usage`",
                         ),
                     );
                 }
@@ -310,6 +318,21 @@ impl FieldAttrs {
                         errors.err(
                             conflict,
                             "`conflicts_with` may only be specified on `#[argy(option)]` \
+                             or `#[argy(switch)]` fields",
+                        );
+                    }
+                }
+            }
+        }
+
+        if !this.requires.is_empty() {
+            match this.field_type.as_ref().map(|f| f.kind) {
+                Some(FieldKind::Option | FieldKind::Switch) => {}
+                _ => {
+                    for req in &this.requires {
+                        errors.err(
+                            req,
+                            "`requires` may only be specified on `#[argy(option)]` \
                              or `#[argy(switch)]` fields",
                         );
                     }
@@ -963,6 +986,29 @@ fn parse_attr_single_string(
 fn parse_attr_multi_string(errors: &Errors, m: &syn::MetaNameValue, list: &mut Vec<syn::LitStr>) {
     if let Some(lit_str) = errors.expect_lit_str(&m.value) {
         list.push(lit_str.clone());
+    }
+}
+
+/// Parse `requires = "name"` (single form) or `requires = ["a", "b"]` (list
+/// form), pushing each referenced option long name onto `list`.
+fn parse_attr_requires(errors: &Errors, m: &syn::MetaNameValue, list: &mut Vec<syn::LitStr>) {
+    match &m.value {
+        syn::Expr::Array(arr) => {
+            for elem in &arr.elems {
+                match elem {
+                    syn::Expr::Lit(el) if matches!(el.lit, syn::Lit::Str(_)) => {
+                        if let syn::Lit::Str(s) = &el.lit {
+                            list.push(s.clone());
+                        }
+                    }
+                    _ => errors.err(
+                        elem,
+                        "`requires` list entries must be string literals naming options",
+                    ),
+                }
+            }
+        }
+        _ => parse_attr_multi_string(errors, m, list),
     }
 }
 

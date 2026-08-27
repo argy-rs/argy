@@ -592,6 +592,8 @@ fn impl_from_args_struct_from_args<'a>(
     let append_missing_requirements =
         append_missing_requirements(&missing_requirements_ident, fields);
 
+    let requires_check = requires_check_tokens(fields, errors, &missing_requirements_ident);
+
     let parse_subcommands = subcommand.map_or_else(
         || quote_spanned! { impl_span => None },
         |subcommand| {
@@ -670,9 +672,11 @@ fn impl_from_args_struct_from_args<'a>(
             #(
                 #append_missing_requirements
             )*
+            #( #requires_check )*
             #missing_requirements_ident.err_on_any(&__usage)?;
 
             ::core::result::Result::Ok(Self {
+
                 #( #unwrap_fields, )*
             })
         }
@@ -1427,6 +1431,71 @@ fn conflicts_entries_tokens(fields: &[StructField<'_>], errors: &Errors) -> Vec<
             let na = syn::LitStr::new(&na, Span::call_site());
             let nb = syn::LitStr::new(&nb, Span::call_site());
             quote! { (#pa, #na, #pb, #nb) }
+        })
+        .collect()
+}
+
+/// Compute `requires` relationships: for each option/switch field with a
+/// `requires` attribute, an entry `(pos_a, name_a, pos_b, name_b)` meaning
+/// "if `pos_a` is seen, `pos_b` must also be seen". Also validates that every
+/// `requires` reference names an existing option/switch long name.
+fn requires_entries(
+    errors: &Errors,
+    fields: &[StructField<'_>],
+) -> Vec<(usize, String, usize, String)> {
+    // Option/switch fields, in the same order as the flag output table.
+    let option_fields: Vec<&StructField<'_>> = fields
+        .iter()
+        .filter(|field| matches!(field.kind, FieldKind::Option | FieldKind::Switch))
+        .collect();
+
+    // Map from long name (without `--`) to the slot index of the field.
+    let mut index_by_long: HashMap<String, usize> = HashMap::new();
+    for (i, field) in option_fields.iter().enumerate() {
+        if let Some(long_name) = &field.long_name {
+            index_by_long.insert(long_name.trim_start_matches("--").to_owned(), i);
+        }
+    }
+
+    let mut pairs: Vec<(usize, String, usize, String)> = Vec::new();
+    for (i, field) in option_fields.iter().enumerate() {
+        for req in &field.attrs.requires {
+            let ref_name = req.value();
+            match index_by_long.get(&ref_name) {
+                Some(&j) if i != j => {
+                    let name_i = field.long_name.as_ref().unwrap().clone();
+                    let name_j = option_fields[j].long_name.as_ref().unwrap().clone();
+                    pairs.push((i, name_i, j, name_j));
+                }
+                _ => {
+                    errors.err(req, &format!("`requires` references unknown option `{ref_name}`"));
+                }
+            }
+        }
+    }
+    pairs
+}
+
+/// One `if` statement per `requires` relationship for the post-parse check: if
+/// slot `pos_a` was seen but slot `pos_b` was not, report `--name-b` as a
+/// missing required option. `mri` is the `MissingRequirements` local ident.
+/// The `seen` array indexes into the same slot table.
+fn requires_check_tokens(
+    fields: &[StructField<'_>],
+    errors: &Errors,
+    mri: &syn::Ident,
+) -> Vec<TokenStream> {
+    requires_entries(errors, fields)
+        .into_iter()
+        .map(|(pa, _, pb, nb)| {
+            let pa = syn::Index::from(pa);
+            let pb = syn::Index::from(pb);
+            let nb = syn::LitStr::new(&nb, Span::call_site());
+            quote! {
+                if __seen[#pa] && !__seen[#pb] {
+                    #mri.missing_option(#nb);
+                }
+            }
         })
         .collect()
 }

@@ -71,3 +71,52 @@ fn run_cli(input: &str) -> ! {
         }
     }
 }
+
+#[derive(FromArgs, Debug)]
+#[allow(dead_code)]
+/// Demo for requires exit-code tests.
+struct RequiresExit {
+    /// target host
+    #[argy(option, requires = "user")]
+    host: Option<String>,
+    /// user name
+    #[argy(option)]
+    user: Option<String>,
+}
+
+#[test]
+fn requires_violation_exit_code() {
+    if let Ok(args) = std::env::var("ARGY_CLI_ARGS") {
+        run_requires_cli(&args);
+    }
+
+    let exe = std::env::current_exe().unwrap();
+    let run = |args: &str| {
+        std::process::Command::new(&exe)
+            .args(["--exact", "requires_violation_exit_code", "--nocapture"])
+            .env("ARGY_CLI_ARGS", args)
+            .output()
+            .unwrap()
+            .status
+            .code()
+    };
+
+    // Violating requires (host without user) exits 2 (usage error).
+    assert_eq!(run("--host example.com"), Some(2), "requires violation should exit 2");
+    // Satisfying requires and independent options exit 0.
+    assert_eq!(run("--host example.com --user alice"), Some(0));
+    assert_eq!(run("--user alice"), Some(0));
+}
+
+fn run_requires_cli(input: &str) -> ! {
+    let mut args: Vec<String> = vec!["requires".to_owned()];
+    args.extend(input.split_whitespace().map(str::to_owned));
+    let strs: Vec<&str> = args.iter().map(String::as_str).collect();
+
+    match RequiresExit::from_args(&["requires"], &strs[1..]) {
+        Ok(_) => std::process::exit(0),
+        Err(early_exit) => {
+            argy::FromEnvError::EarlyExit(early_exit, "requires".to_owned()).handle()
+        }
+    }
+}

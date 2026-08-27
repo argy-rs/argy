@@ -3165,3 +3165,106 @@ fn conflicts_with_rejects_mutually_exclusive_options() {
     assert!(e.output.contains("--interactive"), "unexpected: {:?}", e.output);
     assert!(e.output.contains("--list"), "unexpected: {:?}", e.output);
 }
+
+#[test]
+fn requires_enforces_single_form() {
+    #[derive(FromArgs, PartialEq, Debug)]
+    /// Connect.
+    struct Connect {
+        /// target host
+        #[argy(option, requires = "user")]
+        host: Option<String>,
+        /// user name
+        #[argy(option)]
+        user: Option<String>,
+    }
+
+    // Providing the option without its required option is a usage error.
+    let e = Connect::from_args(&["connect"], &["--host", "example.com"])
+        .expect_err("host requires user");
+    assert!(e.status.is_err());
+    assert!(e.output.contains("Required options not provided:"), "unexpected: {:?}", e.output);
+    assert!(e.output.contains("--user"), "unexpected: {:?}", e.output);
+
+    // Providing both parses normally.
+    let ok = Connect::from_args(&["connect"], &["--host", "example.com", "--user", "alice"])
+        .expect("both options should parse");
+    assert_eq!(ok, Connect { host: Some("example.com".into()), user: Some("alice".into()) });
+
+    // The option with no `requires` may appear alone.
+    let ok =
+        Connect::from_args(&["connect"], &["--user", "alice"]).expect("user alone should parse");
+    assert_eq!(ok, Connect { host: None, user: Some("alice".into()) });
+}
+
+#[test]
+fn requires_enforces_list_form() {
+    #[derive(FromArgs, PartialEq, Debug)]
+    /// Deploy.
+    struct Deploy {
+        /// env name
+        #[argy(option, requires = ["region", "token"])]
+        env: Option<String>,
+        /// region
+        #[argy(option)]
+        region: Option<String>,
+        /// auth token
+        #[argy(option)]
+        token: Option<String>,
+    }
+
+    // Missing one of the required options reports that specific option.
+    let e = Deploy::from_args(&["deploy"], &["--env", "prod", "--region", "us-east-1"])
+        .expect_err("env requires token too");
+    assert!(e.status.is_err());
+    assert!(e.output.contains("--token"), "unexpected: {:?}", e.output);
+
+    // Missing both required options reports both.
+    let e = Deploy::from_args(&["deploy"], &["--env", "prod"])
+        .expect_err("env requires region and token");
+    assert!(e.status.is_err());
+    assert!(e.output.contains("--region"), "unexpected: {:?}", e.output);
+    assert!(e.output.contains("--token"), "unexpected: {:?}", e.output);
+
+    // Providing all required options parses normally.
+    let ok =
+        Deploy::from_args(&["deploy"], &["--env", "prod", "--region", "us-east-1", "--token", "t"])
+            .expect("all options should parse");
+    assert_eq!(
+        ok,
+        Deploy {
+            env: Some("prod".into()),
+            region: Some("us-east-1".into()),
+            token: Some("t".into()),
+        }
+    );
+}
+
+#[test]
+fn requires_supports_mutual_requirements() {
+    #[derive(FromArgs, PartialEq, Debug)]
+    /// Pair.
+    struct Pair {
+        /// first
+        #[argy(option, requires = "second")]
+        first: Option<String>,
+        /// second
+        #[argy(option, requires = "first")]
+        second: Option<String>,
+    }
+
+    // Providing only the first reports the second as missing.
+    let e = Pair::from_args(&["pair"], &["--first", "a"]).expect_err("first requires second");
+    assert!(e.status.is_err());
+    assert!(e.output.contains("--second"), "unexpected: {:?}", e.output);
+
+    // Providing only the second reports the first as missing.
+    let e = Pair::from_args(&["pair"], &["--second", "b"]).expect_err("second requires first");
+    assert!(e.status.is_err());
+    assert!(e.output.contains("--first"), "unexpected: {:?}", e.output);
+
+    // Providing both parses normally.
+    let ok =
+        Pair::from_args(&["pair"], &["--first", "a", "--second", "b"]).expect("both should parse");
+    assert_eq!(ok, Pair { first: Some("a".into()), second: Some("b".into()) });
+}

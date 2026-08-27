@@ -177,6 +177,42 @@ a field with `default` falls back to that value when absent. The
 `default_missing_value` is only consulted when the option is actually provided
 without a value.
 
+## Requires
+
+An option or switch may require that one or more other options or switches
+also be present whenever it is provided. A violation is a usage error (the
+same exit-code-2 path as a missing required option) that lists the missing
+required option and prints usage. Use the single form `requires = "other"` to
+name one required option, or the list form `requires = ["a", "b"]` to name
+several. `requires` is valid on `#[argy(option)]` and `#[argy(switch)]` fields,
+and each referenced name must be an existing option/switch long name.
+
+```rust
+use argy::FromArgs;
+
+#[derive(FromArgs)]
+/// Connect to a remote host.
+struct Connect {
+    /// target host
+    #[argy(option, requires = "user")]
+    host: Option<String>,
+
+    /// user name
+    #[argy(option)]
+    user: Option<String>,
+}
+
+fn main() {
+    let c: Connect = argy::from_env();
+}
+```
+
+Providing `--host <h>` without `--user <u>` fails with a usage error; providing
+both (or neither) succeeds. Requirements may be mutual: if `a` requires `b`
+and `b` requires `a`, then either alone fails and both together succeed.
+
+## Value enums
+
 ## Value enums
 
 ## Value enums

@@ -52,6 +52,14 @@ pub fn args_info_derive(input: proc_macro::TokenStream) -> proc_macro::TokenStre
     gen.into()
 }
 
+/// Entrypoint for `#[derive(ValueEnum)]`.
+#[proc_macro_derive(ValueEnum, attributes(argy))]
+pub fn value_enum_derive(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
+    let ast = syn::parse_macro_input!(input as syn::DeriveInput);
+    let gen = impl_value_enum(&ast);
+    gen.into()
+}
+
 /// Transform the input into a token stream containing any generated implementations,
 /// as well as all errors that occurred.
 fn impl_from_args(input: &syn::DeriveInput) -> TokenStream {
@@ -91,6 +99,150 @@ fn impl_from_arg_value(input: &syn::DeriveInput) -> TokenStream {
     output_tokens
 }
 
+/// Transform the input into a token stream containing any generated
+/// implementations for a `#[derive(ValueEnum)]` enum, as well as all errors
+/// that occurred.
+fn impl_value_enum(input: &syn::DeriveInput) -> TokenStream {
+    let errors = &Errors::default();
+    let mut output_tokens = if let syn::Data::Enum(de) = &input.data {
+        impl_value_enum_enum(errors, &input.ident, &input.generics, input, de)
+    } else {
+        errors.err(input, "`#[derive(ValueEnum)]` can only be applied to `enum`s");
+        TokenStream::new()
+    };
+    errors.to_tokens(&mut output_tokens);
+    output_tokens
+}
+
+/// Implements `std::str::FromStr`, `std::fmt::Display`, `argy::ValueEnum`, and
+/// (via the blanket `FromStr` impl) `argy::FromArgValue` for a fieldless
+/// `#![derive(ValueEnum)]` enum.
+// Too many lines: this helper builds a large generated token stream.
+#[allow(clippy::too_many_lines)]
+fn impl_value_enum_enum(
+    errors: &Errors,
+    name: &syn::Ident,
+    generic_args: &syn::Generics,
+    input: &syn::DeriveInput,
+    de: &syn::DataEnum,
+) -> TokenStream {
+    // A fieldless enum variant with its canonical string name and aliases.
+    struct ValueVariant<'a> {
+        ident: &'a syn::Ident,
+        name: syn::LitStr,
+        aliases: Vec<syn::LitStr>,
+    }
+
+    let value_case = parse_attrs::parse_value_enum_rename_all(errors, input);
+    let sep = value_case.separator();
+
+    let variants: Vec<ValueVariant<'_>> = de
+        .variants
+        .iter()
+        .map(|variant| {
+            let ident = &variant.ident;
+            choice_enum_only_fieldless_variant(errors, &variant.fields);
+            let attrs = parse_attrs::ChoiceVariantAttrs::parse(errors, variant);
+            let name = attrs.name_override.unwrap_or_else(|| {
+                let name_str = pascal_to_case(&format!("{ident}"), sep);
+                syn::LitStr::new(&name_str, ident.span())
+            });
+            ValueVariant { ident, name, aliases: attrs.aliases }
+        })
+        .collect();
+
+    if variants.is_empty() {
+        errors.err(&de.variants, "Value enums must have at least one variant");
+    }
+
+    let name_repeating = std::iter::repeat(name.clone());
+    let variant_idents = variants.iter().map(|x| x.ident).collect::<Vec<_>>();
+    let variant_names = variants.iter().map(|x| &x.name).collect::<Vec<_>>();
+    // A `|`-separated pattern per variant that accepts the canonical name and
+    // any aliases.
+    let variant_match_patterns = variants.iter().map(|variant| {
+        let variant_name = &variant.name;
+        let mut pattern = quote! { #variant_name };
+        for alias in &variant.aliases {
+            pattern = quote! { #pattern | #alias };
+        }
+        pattern
+    });
+    let err_literal = {
+        let mut err = "expected ".to_string();
+        for (i, vname) in variant_names.iter().enumerate() {
+            if i == 0 {
+            } else if i == variant_names.len() - 1 {
+                err.push_str(" or ");
+            } else {
+                err.push_str(", ");
+            }
+            let _ = write!(err, "{:?}", vname.value());
+        }
+        LitStr::new(&err, name.span())
+    };
+    // The `&[Self]` value list, in declaration order.
+    let variant_slice = quote! { &[ #( #name::#variant_idents ),* ] };
+    // A `to_possible_value` arm per variant.
+    let possible_values = variants.iter().map(|variant| {
+        let vident = variant.ident;
+        let vname = &variant.name;
+        let aliases = &variant.aliases;
+        let alias_arr = if aliases.is_empty() {
+            quote! { &[] }
+        } else {
+            quote! { &[ #( #aliases ),* ] }
+        };
+        quote! {
+            #name::#vident => argy::ValueEnumValue::new(#vname, #alias_arr)
+        }
+    });
+    // A `Display` arm per variant.
+    let display_arms = variants.iter().map(|variant| {
+        let vident = variant.ident;
+        let vname = &variant.name;
+        quote! {
+            #name::#vident => ::core::write!(f, "{}", #vname)
+        }
+    });
+    let (impl_generics, ty_generics, where_clause) = generic_args.split_for_impl();
+    quote! {
+        impl #impl_generics ::core::str::FromStr for #name #ty_generics #where_clause {
+            type Err = String;
+            fn from_str(value: &str) -> ::core::result::Result<Self, Self::Err> {
+                ::core::result::Result::Ok(match value {
+                    #(
+                        #variant_match_patterns => #name_repeating::#variant_idents,
+                    )*
+                    _ => {
+                        return ::core::result::Result::Err(#err_literal.to_owned())
+                    }
+                })
+            }
+        }
+        impl #impl_generics ::core::fmt::Display for #name #ty_generics #where_clause {
+            fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
+                match self {
+                    #(
+                        #display_arms,
+                    )*
+                }
+            }
+        }
+        impl #impl_generics argy::ValueEnum for #name #ty_generics #where_clause {
+            fn value_variants() -> &'static [Self] {
+                #variant_slice
+            }
+            fn to_possible_value(&self) -> ::core::option::Option<argy::ValueEnumValue> {
+                ::core::option::Option::Some(match self {
+                    #(
+                        #possible_values,
+                    )*
+                })
+            }
+        }
+    }
+}
 /// The kind of optionality a parameter has.
 enum Optionality {
     None,
@@ -1642,4 +1794,10 @@ fn pascal_to_snake_case(camel: &str) -> String {
         }
     }
     out
+}
+
+/// Convert a `PascalCase` ident to its string form using `sep` between words
+/// (e.g. `FooBar` -> `foo-bar` for `"-"`, `foo_bar` for `"_"`).
+fn pascal_to_case(camel: &str, sep: &str) -> String {
+    pascal_to_snake_case(camel).replace('_', sep)
 }

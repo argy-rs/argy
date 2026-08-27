@@ -404,7 +404,7 @@
 
 use std::{ffi::OsString, str::FromStr};
 
-pub use argy_derive::{ArgsInfo, FromArgValue, FromArgs};
+pub use argy_derive::{ArgsInfo, FromArgValue, FromArgs, ValueEnum};
 
 /// Information about a particular command used for output.
 pub type CommandInfo = argy_shared::CommandInfo<'static>;
@@ -914,6 +914,50 @@ where
     fn from_arg_value(value: &str) -> Result<Self, String> {
         T::from_str(value).map_err(|x| x.to_string())
     }
+}
+
+/// A single named value that a [`ValueEnum`] variant can take, used for
+/// introspection (e.g. generating help or completion lists).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ValueEnumValue {
+    /// The canonical name of the value.
+    name: &'static str,
+    /// Any alias strings that also map to this value.
+    aliases: &'static [&'static str],
+}
+
+impl ValueEnumValue {
+    /// Construct a possible value with the given canonical `name` and `aliases`.
+    #[must_use]
+    pub const fn new(name: &'static str, aliases: &'static [&'static str]) -> Self {
+        Self { name, aliases }
+    }
+
+    /// The canonical name of this value.
+    #[must_use]
+    pub const fn name(&self) -> &'static str {
+        self.name
+    }
+
+    /// The alias strings that also map to this value.
+    #[must_use]
+    pub const fn aliases(&self) -> &'static [&'static str] {
+        self.aliases
+    }
+}
+
+/// A value that can be represented as one of a fixed set of string values.
+///
+/// `#[derive(argy::ValueEnum)]` implements this trait for fieldless enums,
+/// alongside `std::str::FromStr`, `std::fmt::Display`, and (via the blanket
+/// `FromStr` impl) `argy::FromArgValue`.
+pub trait ValueEnum: Sized {
+    /// All variants of the enum, in declaration order.
+    fn value_variants() -> &'static [Self];
+
+    /// The possible value corresponding to this variant, including its
+    /// canonical name and any aliases.
+    fn to_possible_value(&self) -> Option<ValueEnumValue>;
 }
 
 // The following items are all used by the generated code, and should not be considered part

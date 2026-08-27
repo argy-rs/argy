@@ -142,6 +142,48 @@ fn always_five(_value: &str) -> Result<usize, String> {
 }
 ```
 
+## Value enums
+
+Fieldless enums can derive `argy::ValueEnum` to get standalone parsing and
+rendering without a manual `FromStr` impl. The derive implements
+`std::str::FromStr`, `std::fmt::Display`, the `argy::ValueEnum` trait
+(`value_variants()` / `to_possible_value()`), and — via the blanket `FromStr`
+impl — `argy::FromArgValue`, so a `ValueEnum` can be used directly as an
+`#[argy(option)]` value.
+
+Variant names are converted to kebab-case by default (matching clap). Use
+`#[argy(rename_all = "snake_case")]` for snake-case, and override individual
+values with `name` and `alias`:
+
+```rust
+use argy::{FromArgs, ValueEnum};
+
+#[derive(ValueEnum, Debug, PartialEq)]
+#[argy(rename_all = "snake_case")]
+enum Mode {
+    SoftCore,
+    HardCore,
+}
+
+#[derive(FromArgs)]
+/// Do the thing.
+struct DoIt {
+    /// how to do it.
+    #[argy(option)]
+    mode: Mode,
+}
+
+fn main() {
+    let cmd: DoIt = argy::from_env();
+    // `--mode soft_core` parses to Mode::SoftCore
+    println!("mode: {}", cmd.mode);
+}
+```
+
+For kebab-case (the default), `HardCore` becomes `hard-core`; an explicit
+`#[argy(name = "...", alias = "...")]` on a variant overrides its canonical
+name and adds accepted aliases.
+
 Positional arguments can be declared using `#[argy(positional)]`.
 These arguments will be parsed in order of their declaration in
 the structure:

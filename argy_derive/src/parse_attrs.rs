@@ -751,6 +751,64 @@ impl ChoiceVariantAttrs {
     }
 }
 
+/// The case used to render a `#[derive(ValueEnum)]` variant ident as its
+/// string form.
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Default)]
+pub enum ValueCase {
+    /// `FooBar` becomes `foo-bar` (the default, for clap parity).
+    #[default]
+    Kebab,
+    /// `FooBar` becomes `foo_bar`.
+    Snake,
+}
+impl ValueCase {
+    pub const fn separator(self) -> &'static str {
+        match self {
+            Self::Kebab => "-",
+            Self::Snake => "_",
+        }
+    }
+
+    fn from_str(s: &str) -> Option<Self> {
+        match s {
+            "kebab_case" => Some(Self::Kebab),
+            "snake_case" => Some(Self::Snake),
+            _ => None,
+        }
+    }
+}
+
+/// Parse the optional `#[argy(rename_all = "snake_case"|"kebab_case")]`
+/// attribute on a `#[derive(ValueEnum)]` enum. Unknown values produce an error
+/// and fall back to the default (`kebab_case`).
+pub fn parse_value_enum_rename_all(errors: &Errors, derive_input: &syn::DeriveInput) -> ValueCase {
+    let mut value_case = ValueCase::default();
+    for attr in &derive_input.attrs {
+        let Some(ml) = argy_attr_to_meta_list(errors, attr) else {
+            continue;
+        };
+        for meta in ml {
+            if !meta.path().is_ident("rename_all") {
+                continue;
+            }
+            let Some(m) = errors.expect_meta_name_value(&meta) else {
+                continue;
+            };
+            let Some(lit) = errors.expect_lit_str(&m.value) else {
+                continue;
+            };
+            match ValueCase::from_str(&lit.value()) {
+                Some(c) => value_case = c,
+                None => {
+                    errors
+                        .err(&m.value, "`rename_all` must be one of `snake_case` or `kebab_case`");
+                }
+            }
+        }
+    }
+    value_case
+}
+
 fn check_option_description(errors: &Errors, desc: &str, span: Span) {
     let chars = &mut desc.trim().chars();
     match (chars.next(), chars.next()) {

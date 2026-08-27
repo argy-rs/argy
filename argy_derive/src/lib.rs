@@ -1128,10 +1128,15 @@ fn impl_flatten_contribution<'a>(
                     },
                     ToTokens::into_token_stream,
                 );
+                let value_delimiter = field.attrs.value_delimiter.as_ref().map_or_else(
+                    || quote! { ::core::option::Option::None },
+                    |c| quote! { ::core::option::Option::Some(#c) },
+                );
                 quote! {
                     #fname: argy::ParseValueSlotTy {
                         slot: std::default::Default::default(),
                         parse_func: |_, value| { #from_str_fn(value) },
+                        value_delimiter: #value_delimiter,
                     }
                 }
             }
@@ -1729,12 +1734,10 @@ fn declare_local_storage_for_from_args_fields<'a>(
                     },
                     ToTokens::into_token_stream,
                 );
-
                 let value_delimiter = field.attrs.value_delimiter.as_ref().map_or_else(
                     || quote! { ::core::option::Option::None },
                     |c| quote! { ::core::option::Option::Some(#c) },
                 );
-
                 quote! {
                     let mut #field_name: argy::ParseValueSlotTy<#field_slot_type, #field_type>
                         = argy::ParseValueSlotTy {

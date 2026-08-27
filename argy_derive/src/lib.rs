@@ -300,6 +300,18 @@ impl<'a> StructField<'a> {
     #[allow(clippy::too_many_lines)]
     fn new(errors: &Errors, field: &'a syn::Field, attrs: FieldAttrs) -> Option<Self> {
         let name = field.ident.as_ref().expect("missing ident for named field");
+        // A flattened field inlines a nested `FromArgs` struct; it has no kind.
+        if attrs.flatten {
+            return Some(StructField {
+                field,
+                attrs,
+                name,
+                kind: FieldKind::Flatten,
+                ty_without_wrapper: &field.ty,
+                optionality: Optionality::None,
+                long_name: None,
+            });
+        }
 
         // Ensure that one "kind" is present (switch, option, subcommand, positional)
         let kind = if let Some(field_type) = &attrs.field_type {
@@ -368,6 +380,7 @@ impl<'a> StructField<'a> {
                     if inner.is_some() { Optionality::Optional } else { Optionality::None };
                 ty_without_wrapper = inner.unwrap_or(&field.ty);
             }
+            FieldKind::Flatten => unreachable!(),
         }
 
         // Determine the "long" name of options and switches.
@@ -388,7 +401,7 @@ impl<'a> StructField<'a> {
                 let long_name = format!("--{long_name}");
                 Some(long_name)
             }
-            FieldKind::SubCommand | FieldKind::Positional => None,
+            FieldKind::SubCommand | FieldKind::Positional | FieldKind::Flatten => None,
         };
 
         if let Some(env) = &attrs.env {
@@ -505,14 +518,17 @@ fn impl_from_args_struct(
         }
     };
 
-    let fields: Vec<_> = fields
+    // Split out `#[argy(flatten)]` fields: their nested `FromArgs` fields are
+    // inlined via a runtime parse contribution rather than as direct slots, so
+    // the static table builders below operate only on the regular fields.
+    let (flatten_fields, fields): (Vec<_>, Vec<_>) = fields
         .named
         .iter()
         .filter_map(|field| {
             let attrs = FieldAttrs::parse(errors, field);
             StructField::new(errors, field, attrs)
         })
-        .collect();
+        .partition(|f| f.kind == FieldKind::Flatten);
 
     ensure_unique_names(errors, &fields);
     ensure_only_last_positional_is_optional(errors, &fields);
@@ -520,12 +536,16 @@ fn impl_from_args_struct(
 
     let impl_span = Span::call_site();
 
-    let from_args_method = impl_from_args_struct_from_args(errors, type_attrs, &fields);
+    let from_args_method =
+        impl_from_args_struct_from_args(errors, type_attrs, &fields, &flatten_fields);
 
     let redact_arg_values_method =
-        impl_from_args_struct_redact_arg_values(errors, type_attrs, &fields);
+        impl_from_args_struct_redact_arg_values(errors, type_attrs, &fields, &flatten_fields);
 
     let top_or_sub_cmd_impl = top_or_sub_cmd_impl(errors, name, type_attrs, generic_args);
+
+    let flatten_contribution_impl =
+        impl_flatten_contribution(errors, name, generic_args, &fields, &flatten_fields);
 
     let (impl_generics, ty_generics, where_clause) = generic_args.split_for_impl();
     let trait_impl = quote_spanned! { impl_span =>
@@ -537,6 +557,8 @@ fn impl_from_args_struct(
         }
 
         #top_or_sub_cmd_impl
+
+        #flatten_contribution_impl
     };
 
     trait_impl
@@ -548,7 +570,11 @@ fn impl_from_args_struct_from_args<'a>(
     errors: &Errors,
     type_attrs: &TypeAttrs,
     fields: &'a [StructField<'a>],
+    flatten_fields: &'a [StructField<'a>],
 ) -> TokenStream {
+    if !flatten_fields.is_empty() {
+        return impl_from_args_struct_from_args_flatten(errors, type_attrs, fields, flatten_fields);
+    }
     let init_fields = declare_local_storage_for_from_args_fields(fields);
     let unwrap_fields = unwrap_from_args_fields(fields);
     let positional_fields: Vec<&StructField<'_>> =
@@ -580,7 +606,7 @@ fn impl_from_args_struct_from_args<'a>(
             }
             FieldKind::Option => Some(quote! { argy::ParseStructOption::Value(&mut #field_name) }),
             FieldKind::Switch => Some(quote! { argy::ParseStructOption::Flag(&mut #field_name) }),
-            FieldKind::SubCommand | FieldKind::Positional => None,
+            FieldKind::SubCommand | FieldKind::Positional | FieldKind::Flatten => None,
         }
     });
 
@@ -620,10 +646,10 @@ fn impl_from_args_struct_from_args<'a>(
                 Some(argy::ParseStructSubCommand {
                     subcommands: <#ty as argy::SubCommands>::COMMANDS,
                     dynamic_subcommands: &<#ty as argy::SubCommands>::dynamic_commands(),
-                    parse_func: &mut |__command, __remaining_args| {
+                    parse_func: Box::new(|__command, __remaining_args| {
                         #name = Some(<#ty as argy::FromArgs>::from_args(__command, __remaining_args)?);
                         ::core::result::Result::Ok(())
-                    },
+                    }),
                 })
             }
         },
@@ -637,7 +663,15 @@ fn impl_from_args_struct_from_args<'a>(
     let help = if cfg!(feature = "help") {
         // Identifier referring to a value containing the name of the current command as an `&[&str]`.
         let cmd_name_str_array_ident = syn::Ident::new("__cmd_name", impl_span);
-        help::help(errors, cmd_name_str_array_ident, type_attrs, fields, subcommand, &help_triggers)
+        help::help(
+            errors,
+            cmd_name_str_array_ident,
+            type_attrs,
+            fields,
+            &[],
+            subcommand,
+            &help_triggers,
+        )
     } else {
         quote! { String::new() }
     };
@@ -793,10 +827,588 @@ fn version_func(type_attrs: &TypeAttrs) -> TokenStream {
 
 // Too many lines: this helper builds a large generated token stream.
 #[allow(clippy::too_many_lines)]
+fn impl_from_args_struct_from_args_flatten<'a>(
+    errors: &Errors,
+    type_attrs: &TypeAttrs,
+    fields: &'a [StructField<'a>],
+    flatten_fields: &'a [StructField<'a>],
+) -> TokenStream {
+    let init_fields = declare_local_storage_for_from_args_fields(fields);
+    let unwrap_fields = unwrap_from_args_fields(fields);
+    let positional_fields: Vec<&StructField<'_>> =
+        fields.iter().filter(|field| field.kind == FieldKind::Positional).collect();
+    let positional_field_idents = positional_fields.iter().map(|field| &field.field.ident);
+    let positional_field_names = positional_fields.iter().map(|field| field.name.to_string());
+    let last_positional_is_repeating =
+        positional_fields.last().is_some_and(|field| field.optionality == Optionality::Repeating);
+    let last_positional_is_greedy = positional_fields
+        .last()
+        .is_some_and(|field| field.kind == FieldKind::Positional && field.attrs.greedy.is_some());
+
+    let flag_output_table = fields.iter().filter_map(|field| {
+        let field_name = &field.field.ident;
+        match field.kind {
+            FieldKind::Option if field.attrs.optional_value => {
+                let missing = field
+                    .attrs
+                    .default_missing_value
+                    .as_ref()
+                    .expect("optional_value requires default_missing_value");
+                let missing_value = missing.value();
+                Some(quote! {
+                    argy::ParseStructOption::OptionalValue {
+                        slot: &mut #field_name,
+                        missing_value: #missing_value,
+                    }
+                })
+            }
+            FieldKind::Option => Some(quote! { argy::ParseStructOption::Value(&mut #field_name) }),
+            FieldKind::Switch => Some(quote! { argy::ParseStructOption::Flag(&mut #field_name) }),
+            FieldKind::SubCommand | FieldKind::Positional | FieldKind::Flatten => None,
+        }
+    });
+
+    let flag_str_to_output_table_map = flag_str_to_output_table_map_entries(fields);
+    let global_options = global_options_entries(fields);
+    let conflicts = conflicts_entries_tokens(fields, errors);
+    let num_option_slots = fields
+        .iter()
+        .filter(|field| matches!(field.kind, FieldKind::Option | FieldKind::Switch))
+        .count();
+
+    let mut subcommands_iter =
+        fields.iter().filter(|field| field.kind == FieldKind::SubCommand).fuse();
+    let subcommand: Option<&StructField<'_>> = subcommands_iter.next();
+    for dup_subcommand in subcommands_iter {
+        errors.duplicate_attrs("subcommand", subcommand.unwrap().field, dup_subcommand.field);
+    }
+
+    let impl_span = Span::call_site();
+
+    let missing_requirements_ident = syn::Ident::new("__missing_requirements", impl_span);
+
+    let env_fill = env_fill_fields(fields);
+    let append_missing_requirements =
+        append_missing_requirements(&missing_requirements_ident, fields);
+    let requires_check = requires_check_tokens(fields, errors, &missing_requirements_ident);
+
+    let parse_subcommands = subcommand.map_or_else(
+        || quote_spanned! { impl_span => None },
+        |subcommand| {
+            let name = subcommand.name;
+            let ty = subcommand.ty_without_wrapper;
+            quote_spanned! { impl_span =>
+                Some(argy::ParseStructSubCommand {
+                    subcommands: <#ty as argy::SubCommands>::COMMANDS,
+                    dynamic_subcommands: &<#ty as argy::SubCommands>::dynamic_commands(),
+                    parse_func: Box::new(|__command, __remaining_args| {
+                        #name = Some(<#ty as argy::FromArgs>::from_args(__command, __remaining_args)?);
+                        ::core::result::Result::Ok(())
+                    }),
+                })
+            }
+        },
+    );
+
+    let help_triggers = get_help_triggers(type_attrs);
+    let parse_help_triggers = get_parse_help_triggers(type_attrs);
+    let version_triggers = get_version_triggers(type_attrs);
+    let version_func = version_func(type_attrs);
+
+    let help = if cfg!(feature = "help") {
+        // Identifier referring to a value containing the name of the current command as an `&[&str]`.
+        let cmd_name_str_array_ident = syn::Ident::new("__cmd_name", impl_span);
+        help::help(
+            errors,
+            cmd_name_str_array_ident,
+            type_attrs,
+            fields,
+            flatten_fields,
+            subcommand,
+            &help_triggers,
+        )
+    } else {
+        quote! { String::new() }
+    };
+
+    // Per-flatten-field append/build/struct-field code, plus the shared table
+    // declarations and the post-parse drop that releases the contributions.
+    let mut flatten_decl = Vec::new();
+    let mut flatten_append = Vec::new();
+    let mut flatten_build = Vec::new();
+    let mut flatten_struct_fields = Vec::new();
+    let mut flatten_check_missing = Vec::new();
+    for (i, fl) in flatten_fields.iter().enumerate() {
+        let ty = fl.ty_without_wrapper;
+        let field_ident = fl.name;
+        let decl_ident = syn::Ident::new(&format!("__flatten_{i}"), impl_span);
+        let seen_base_ident = syn::Ident::new(&format!("__seen_base_{i}"), impl_span);
+        let n_ident = syn::Ident::new(&format!("__flatten_n_{i}"), impl_span);
+        let val_ident = syn::Ident::new(&format!("__flatten_val_{i}"), impl_span);
+        flatten_decl.push(quote_spanned! { impl_span =>
+            let mut #decl_ident = <#ty as argy::FlattenFromArgs>::flatten_contribution();
+        });
+        flatten_append.push(quote_spanned! { impl_span =>
+            let #seen_base_ident = __seen.len();
+            let #n_ident = argy::FlattenContribution::append(
+                &mut #decl_ident,
+                &mut __arg_to_slot,
+                &mut __slots,
+                #seen_base_ident,
+                &mut __positionals,
+                &mut __last_is_repeating,
+                &mut __last_is_greedy,
+                &mut __subcommand,
+            );
+            __seen.resize(__seen.len() + #n_ident, false);
+        });
+        flatten_build.push(quote_spanned! { impl_span =>
+            let #val_ident = <_ as argy::FlattenContribution<#ty>>::build(#decl_ident);
+        });
+        flatten_struct_fields.push(quote_spanned! { impl_span =>
+            #field_ident: #val_ident,
+        });
+        flatten_check_missing.push(quote_spanned! { impl_span =>
+            <_ as argy::FlattenContribution<#ty>>::check_missing(
+                &#decl_ident,
+                &mut #missing_requirements_ident,
+            );
+        });
+    }
+
+    let method_impl = quote_spanned! { impl_span =>
+        fn from_args(__cmd_name: &[&str], __args: &[&str])
+            -> ::core::result::Result<Self, argy::EarlyExit>
+        {
+            #![allow(clippy::unwrap_in_result)]
+
+            #( #init_fields )*
+
+            let mut __arg_to_slot: ::std::vec::Vec<(&'static str, usize)> = ::std::vec![
+                #( #flag_str_to_output_table_map ,)*
+            ];
+            let mut __slots: ::std::vec::Vec<argy::ParseStructOption> = ::std::vec![
+                #( #flag_output_table ,)*
+            ];
+            let mut __positionals: ::std::vec::Vec<argy::ParseStructPositional> = ::std::vec![
+                #(
+                    argy::ParseStructPositional {
+                        name: #positional_field_names,
+                        slot: &mut #positional_field_idents as &mut argy::ParseValueSlot,
+                    },
+                )*
+            ];
+            let mut __last_is_repeating = #last_positional_is_repeating;
+            let mut __last_is_greedy = #last_positional_is_greedy;
+            let mut __seen: ::std::vec::Vec<bool> = ::std::vec![false; #num_option_slots];
+
+            #( #flatten_decl )*
+
+            let mut __subcommand: ::std::option::Option<argy::ParseStructSubCommand> =
+                #parse_subcommands;
+
+            #( #flatten_append )*
+
+            let __usage = #help;
+
+            argy::parse_struct_args(
+                __cmd_name,
+                __args,
+                argy::ParseStructOptions {
+                    arg_to_slot: &__arg_to_slot[..],
+                    slots: &mut __slots[..],
+                    seen: &mut __seen[..],
+                    conflicts: &[ #( #conflicts ,)* ],
+                    help_triggers: &[ #( #parse_help_triggers ),* ],
+                    version_triggers: &[ #( #version_triggers ),* ],
+                    global_options: &[ #( #global_options ),* ],
+                },
+                argy::ParseStructPositionals {
+                    positionals: &mut __positionals[..],
+                    last_is_repeating: __last_is_repeating,
+                    last_is_greedy: __last_is_greedy,
+                },
+                __subcommand,
+                &|| __usage.clone(),
+                #version_func,
+            )?;
+
+            #( #env_fill )*
+
+            // Release the borrows the flatten contributions hold on the shared
+            // tables before building the nested values.
+            ::core::mem::drop((__arg_to_slot, __slots, __positionals));
+
+            let mut #missing_requirements_ident = argy::MissingRequirements::default();
+            #(
+                #append_missing_requirements
+            )*
+            #( #requires_check )*
+            #( #flatten_check_missing )*
+            #missing_requirements_ident.err_on_any(&__usage)?;
+
+            #( #flatten_build )*
+
+            ::core::result::Result::Ok(Self {
+                #( #unwrap_fields, )*
+                #( #flatten_struct_fields )*
+            })
+        }
+    };
+
+    method_impl
+}
+
+// Generates `FlattenFromArgs` + `FlattenContribution` impls so this type can be
+// inlined into a parent command via `#[argy(flatten)]`. The contribution owns the
+// same slots the type's own `from_args` would, and `append` merges them into a
+// parent's shared tables.
+// Too many lines: this helper builds a large generated token stream.
+#[allow(clippy::too_many_lines)]
+fn impl_flatten_contribution<'a>(
+    errors: &Errors,
+    name: &syn::Ident,
+    generic_args: &syn::Generics,
+    fields: &'a [StructField<'a>],
+    flatten_fields: &'a [StructField<'a>],
+) -> TokenStream {
+    let contribution_ident =
+        syn::Ident::new(&format!("{name}FlattenContribution"), Span::call_site());
+    let (impl_generics, ty_generics, where_clause) = generic_args.split_for_impl();
+
+    // ---- Struct fields of the contribution ----
+    let struct_fields = fields.iter().map(|field| {
+        let fname = field.name;
+        match field.kind {
+            FieldKind::Option | FieldKind::Positional => {
+                let field_type = field.ty_without_wrapper;
+                let field_slot_type = match field.optionality {
+                    Optionality::Optional | Optionality::Repeating => {
+                        (&field.field.ty).into_token_stream()
+                    }
+                    Optionality::None | Optionality::Defaulted(_) => {
+                        quote! { std::option::Option<#field_type> }
+                    }
+                    Optionality::DefaultedRepeating(_) => {
+                        quote! { std::option::Option<std::vec::Vec<#field_type>> }
+                    }
+                };
+                quote! { #fname: argy::ParseValueSlotTy<#field_slot_type, #field_type> }
+            }
+            FieldKind::Switch => {
+                let field_type = &field.field.ty;
+                quote! { #fname: #field_type }
+            }
+            FieldKind::SubCommand => {
+                // The contribution holds the subcommand as `Option` (starting
+                // `None`) and unwraps it in `build` for required subcommands.
+                let field_type = &field.ty_without_wrapper;
+                quote! { #fname: std::option::Option<#field_type> }
+            }
+            FieldKind::Flatten => unreachable!(),
+        }
+    });
+    let nested_struct_fields = flatten_fields.iter().map(|field| {
+        let fname = field.name;
+        let ty = field.ty_without_wrapper;
+        quote! { #fname: <#ty as argy::FlattenFromArgs>::Contribution }
+    });
+
+    // ---- Constructor field initializers ----
+    let ctor_fields = fields.iter().map(|field| {
+        let fname = field.name;
+        match field.kind {
+            FieldKind::Option | FieldKind::Positional => {
+                let field_type = field.ty_without_wrapper;
+                let from_str_fn = field.attrs.from_str_fn.as_ref().map_or_else(
+                    || {
+                        quote! {
+                            <#field_type as argy::FromArgValue>::from_arg_value
+                        }
+                    },
+                    ToTokens::into_token_stream,
+                );
+                quote! {
+                    #fname: argy::ParseValueSlotTy {
+                        slot: std::default::Default::default(),
+                        parse_func: |_, value| { #from_str_fn(value) },
+                    }
+                }
+            }
+            FieldKind::Switch => quote! { #fname: argy::Flag::default() },
+            FieldKind::SubCommand => quote! { #fname: None },
+            FieldKind::Flatten => unreachable!(),
+        }
+    });
+    let nested_ctor_fields = flatten_fields.iter().map(|field| {
+        let fname = field.name;
+        let ty = field.ty_without_wrapper;
+        quote! { #fname: <#ty as argy::FlattenFromArgs>::flatten_contribution() }
+    });
+
+    // ---- append(): option/switch entries ----
+    let option_blocks: Vec<TokenStream> = fields
+        .iter()
+        .filter(|field| matches!(field.kind, FieldKind::Option | FieldKind::Switch))
+        .map(|field| {
+            let fname = field.name;
+            let slot_entries = flag_str_to_output_table_map_entries_for_contribution(field);
+            let parse_option = match field.kind {
+                FieldKind::Option if field.attrs.optional_value => {
+                    let missing = field
+                        .attrs
+                        .default_missing_value
+                        .as_ref()
+                        .expect("optional_value requires default_missing_value");
+                    let missing_value = missing.value();
+                    quote! {
+                        argy::ParseStructOption::OptionalValue {
+                            slot: &mut self.#fname,
+                            missing_value: #missing_value,
+                        }
+                    }
+                }
+                FieldKind::Option => {
+                    quote! { argy::ParseStructOption::Value(&mut self.#fname) }
+                }
+                FieldKind::Switch => {
+                    quote! { argy::ParseStructOption::Flag(&mut self.#fname) }
+                }
+                _ => unreachable!(),
+            };
+            quote! {
+                #slot_entries
+                slots.push(#parse_option);
+                __slot += 1;
+            }
+        })
+        .collect();
+
+    // ---- append(): positionals ----
+    let positional_fields: Vec<&StructField<'_>> =
+        fields.iter().filter(|f| f.kind == FieldKind::Positional).collect();
+    let positional_block = if positional_fields.is_empty() {
+        TokenStream::new()
+    } else {
+        let pos_entries = positional_fields.iter().map(|field| {
+            let fname = field.name;
+            let name = field.positional_arg_name();
+            quote! {
+                positionals.push(argy::ParseStructPositional {
+                    name: #name,
+                    slot: &mut self.#fname as &mut argy::ParseValueSlot,
+                });
+            }
+        });
+        let last_repeating =
+            positional_fields.last().is_some_and(|f| f.optionality == Optionality::Repeating);
+        let last_greedy = positional_fields.last().is_some_and(|f| f.attrs.greedy.is_some());
+        quote! {
+            #( #pos_entries )*
+            *last_is_repeating = #last_repeating;
+            *last_is_greedy = #last_greedy;
+        }
+    };
+
+    // ---- append(): subcommand ----
+    let subcommand_block = {
+        let mut subcommands_iter = fields.iter().filter(|f| f.kind == FieldKind::SubCommand).fuse();
+        let subcommand = subcommands_iter.next();
+        subcommand.map_or_else(TokenStream::new, |subcommand| {
+            let fname = subcommand.name;
+            let ty = subcommand.ty_without_wrapper;
+            quote! {
+                if subcommand.is_none() {
+                    let __sub_ref = &mut self.#fname;
+                    *subcommand = Some(argy::ParseStructSubCommand {
+                        subcommands: <#ty as argy::SubCommands>::COMMANDS,
+                        dynamic_subcommands: &<#ty as argy::SubCommands>::dynamic_commands(),
+                        parse_func: Box::new(move |__command, __remaining_args| {
+                            *__sub_ref = Some(<#ty as argy::FromArgs>::from_args(__command, __remaining_args)?);
+                            ::core::result::Result::Ok(())
+                        }),
+                    });
+                }
+            }
+        })
+    };
+
+    // ---- append(): nested flatten ----
+    let nested_blocks: Vec<TokenStream> = flatten_fields
+        .iter()
+        .enumerate()
+        .map(|(i, field)| {
+            let fname = field.name;
+            let n_ident = syn::Ident::new(&format!("__nested_n_{i}"), Span::call_site());
+            quote! {
+                let #n_ident = self.#fname.append(
+                    arg_to_slot,
+                    slots,
+                    __slot,
+                    positionals,
+                    last_is_repeating,
+                    last_is_greedy,
+                    subcommand,
+                );
+                __slot += #n_ident;
+            }
+        })
+        .collect();
+
+    // ---- build(): field value construction ----
+    let build_fields = fields.iter().map(|field| {
+        let fname = field.name;
+        match field.kind {
+            FieldKind::Option | FieldKind::Positional => match &field.optionality {
+                Optionality::None => quote! { #fname: self.#fname.slot.unwrap() },
+                Optionality::Optional | Optionality::Repeating => {
+                    quote! { #fname: self.#fname.slot }
+                }
+                Optionality::Defaulted(tokens) | Optionality::DefaultedRepeating(tokens) => {
+                    quote! {
+                        #fname: self.#fname.slot.unwrap_or_else(|| #tokens)
+                    }
+                }
+            },
+            FieldKind::Switch => quote! { #fname: self.#fname },
+            FieldKind::SubCommand => match field.optionality {
+                Optionality::None => quote! { #fname: self.#fname.unwrap() },
+                Optionality::Optional | Optionality::Repeating => quote! { #fname: self.#fname },
+                Optionality::Defaulted(_) | Optionality::DefaultedRepeating(_) => unreachable!(),
+            },
+            FieldKind::Flatten => unreachable!(),
+        }
+    });
+    let nested_build_fields = flatten_fields.iter().map(|field| {
+        let fname = field.name;
+        let ty = field.ty_without_wrapper;
+        quote! { #fname: <_ as argy::FlattenContribution<#ty>>::build(self.#fname) }
+    });
+
+    // ---- check_missing(): report required fields that were not provided ----
+    let check_missing_own = fields.iter().filter(|f| f.optionality.is_required()).map(|field| {
+        let fname = field.name;
+        match field.kind {
+            FieldKind::Option => {
+                let name = field.long_name.as_ref().expect("options always have a long name");
+                quote! {
+                    if self.#fname.slot.is_none() {
+                        mri.missing_option(#name);
+                    }
+                }
+            }
+            FieldKind::Positional => {
+                let name = field.positional_arg_name();
+                quote! {
+                    if self.#fname.slot.is_none() {
+                        mri.missing_positional_arg(#name);
+                    }
+                }
+            }
+            FieldKind::SubCommand => {
+                let ty = field.ty_without_wrapper;
+                quote! {
+                    if self.#fname.is_none() {
+                        mri.missing_subcommands(
+                            <#ty as argy::SubCommands>::COMMANDS
+                                .iter()
+                                .cloned()
+                                .chain(
+                                    <#ty as argy::SubCommands>::dynamic_commands()
+                                        .iter()
+                                        .copied()
+                                ),
+                        );
+                    }
+                }
+            }
+            FieldKind::Switch | FieldKind::Flatten => unreachable!(),
+        }
+    });
+    let check_missing_nested = flatten_fields.iter().map(|field| {
+        let fname = field.name;
+        quote! { self.#fname.check_missing(mri); }
+    });
+
+    // Static help lines for this type's own fields plus recursive calls to any
+
+    // Static help lines for this type's own fields plus recursive calls to any
+    // nested flattened types, inlined at the parent command's scope.
+    let static_fragment = crate::help::flatten_help_fragment(errors, fields);
+    let nested_fragments = flatten_fields.iter().map(|field| {
+        let ty = field.ty_without_wrapper;
+        quote! { __frag.push_str(&<#ty as argy::FlattenFromArgs>::flatten_help_fragment()); }
+    });
+
+    quote! {
+        #[automatically_derived]
+        #[doc(hidden)]
+        struct #contribution_ident #impl_generics #where_clause {
+            #( #struct_fields, )*
+            #( #nested_struct_fields, )*
+        }
+
+        #[automatically_derived]
+        impl #impl_generics argy::FlattenFromArgs for #name #ty_generics #where_clause {
+            type Contribution = #contribution_ident #ty_generics;
+
+            fn flatten_contribution() -> Self::Contribution {
+                #contribution_ident {
+                    #( #ctor_fields, )*
+                    #( #nested_ctor_fields, )*
+                }
+            }
+
+            fn flatten_help_fragment() -> String {
+                let mut __frag = String::from(#static_fragment);
+                #( #nested_fragments )*
+                __frag
+            }
+        }
+
+        #[automatically_derived]
+        impl #impl_generics argy::FlattenContribution<#name #ty_generics> for #contribution_ident #ty_generics #where_clause {
+            #[allow(clippy::too_many_arguments)]
+            fn append<'a>(
+                &'a mut self,
+                arg_to_slot: &mut Vec<(&'static str, usize)>,
+                slots: &mut Vec<argy::ParseStructOption<'a>>,
+                seen_base: usize,
+                positionals: &mut Vec<argy::ParseStructPositional<'a>>,
+                last_is_repeating: &mut bool,
+                last_is_greedy: &mut bool,
+                subcommand: &mut Option<argy::ParseStructSubCommand<'a>>,
+            ) -> usize {
+                let mut __slot = seen_base;
+                #( #option_blocks )*
+                #positional_block
+                #subcommand_block
+                #( #nested_blocks )*
+                __slot - seen_base
+            }
+
+            fn build(self) -> #name #ty_generics {
+                #name {
+                    #( #build_fields, )*
+                    #( #nested_build_fields, )*
+                }
+            }
+
+            fn check_missing(&self, mri: &mut argy::MissingRequirements) {
+                #( #check_missing_own )*
+                #( #check_missing_nested )*
+            }
+        }
+    }
+}
+
+// Too many lines: this helper builds a large generated token stream.
+#[allow(clippy::too_many_lines)]
 fn impl_from_args_struct_redact_arg_values<'a>(
     errors: &Errors,
     type_attrs: &TypeAttrs,
     fields: &'a [StructField<'a>],
+    _flatten_fields: &'a [StructField<'a>],
 ) -> TokenStream {
     let init_fields = declare_local_storage_for_redacted_fields(fields);
     let unwrap_fields = unwrap_redacted_fields(fields);
@@ -830,7 +1442,7 @@ fn impl_from_args_struct_redact_arg_values<'a>(
             }
             FieldKind::Option => Some(quote! { argy::ParseStructOption::Value(&mut #field_name) }),
             FieldKind::Switch => Some(quote! { argy::ParseStructOption::Flag(&mut #field_name) }),
-            FieldKind::SubCommand | FieldKind::Positional => None,
+            FieldKind::SubCommand | FieldKind::Positional | FieldKind::Flatten => None,
         }
     });
 
@@ -866,10 +1478,10 @@ fn impl_from_args_struct_redact_arg_values<'a>(
                 Some(argy::ParseStructSubCommand {
                     subcommands: <#ty as argy::SubCommands>::COMMANDS,
                     dynamic_subcommands: &<#ty as argy::SubCommands>::dynamic_commands(),
-                    parse_func: &mut |__command, __remaining_args| {
+                    parse_func: Box::new(|__command, __remaining_args| {
                         #name = Some(<#ty as argy::FromArgs>::redact_arg_values(__command, __remaining_args)?);
                         ::core::result::Result::Ok(())
-                    },
+                    }),
                 })
             }
         },
@@ -889,7 +1501,15 @@ fn impl_from_args_struct_redact_arg_values<'a>(
     let help = if cfg!(feature = "help") {
         // Identifier referring to a value containing the name of the current command as an `&[&str]`.
         let cmd_name_str_array_ident = syn::Ident::new("__cmd_name", impl_span);
-        help::help(errors, cmd_name_str_array_ident, type_attrs, fields, subcommand, &help_triggers)
+        help::help(
+            errors,
+            cmd_name_str_array_ident,
+            type_attrs,
+            fields,
+            &[],
+            subcommand,
+            &help_triggers,
+        )
     } else {
         quote! { String::new() }
     };
@@ -1130,6 +1750,7 @@ fn declare_local_storage_for_from_args_fields<'a>(
             FieldKind::Switch => {
                 quote! { let mut #field_name: #field_slot_type = argy::Flag::default(); }
             }
+            FieldKind::Flatten => unreachable!(),
         }
     })
 }
@@ -1160,6 +1781,7 @@ fn unwrap_from_args_fields<'a>(
                 Optionality::Optional | Optionality::Repeating => field_name.into_token_stream(),
                 Optionality::Defaulted(_) | Optionality::DefaultedRepeating(_) => unreachable!(),
             },
+            FieldKind::Flatten => unreachable!(),
         }
     })
 }
@@ -1218,10 +1840,12 @@ fn env_fill_fields<'a>(fields: &'a [StructField<'a>]) -> Vec<TokenStream> {
                             }
                         });
                     }
-                    FieldKind::SubCommand | FieldKind::Positional => unreachable!(),
+                    FieldKind::Flatten | FieldKind::SubCommand | FieldKind::Positional => {
+                        unreachable!()
+                    }
                 }
             }
-            FieldKind::SubCommand | FieldKind::Positional => {}
+            FieldKind::SubCommand | FieldKind::Positional | FieldKind::Flatten => {}
         }
     }
     out
@@ -1294,6 +1918,7 @@ fn declare_local_storage_for_redacted_fields<'a>(
             FieldKind::SubCommand => {
                 quote! { let mut #field_name: std::option::Option<std::vec::Vec<String>> = None; }
             }
+            FieldKind::Flatten => unreachable!(),
         }
     })
 }
@@ -1346,8 +1971,29 @@ fn unwrap_redacted_fields<'a>(
                     }
                 }
             }
+            FieldKind::Flatten => unreachable!(),
         }
     })
+}
+
+/// `arg_to_slot.push((...))` statements for a single option/switch field, mapping its
+/// short/long/alias forms to the runtime `__slot` counter in a flatten contribution's
+/// `append`.
+fn flag_str_to_output_table_map_entries_for_contribution<'a>(
+    field: &'a StructField<'a>,
+) -> TokenStream {
+    let long_name = field.long_name.as_ref().expect("option/switch has a long name");
+    let mut entries = Vec::new();
+    if let Some(short) = &field.attrs.short {
+        let short = format!("-{}", short.value());
+        entries.push(quote! { arg_to_slot.push((#short, __slot)); });
+    }
+    entries.push(quote! { arg_to_slot.push((#long_name, __slot)); });
+    for alias in &field.attrs.aliases {
+        let alias = format!("--{}", alias.value());
+        entries.push(quote! { arg_to_slot.push((#alias, __slot)); });
+    }
+    quote! { #( #entries )* }
 }
 
 /// Entries of tokens like `("--some-flag-key", 5)` that map from a flag key string
@@ -1583,6 +2229,7 @@ fn append_missing_requirements<'a>(
                         }
                     }
                 }
+                FieldKind::Flatten => unreachable!(),
             }
         })
 }

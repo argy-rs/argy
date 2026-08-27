@@ -15,6 +15,9 @@ use {
 // Allow: many boolean config flags on this struct; refactoring would hurt readability.
 #[allow(clippy::struct_excessive_bools)]
 pub struct FieldAttrs {
+    /// Whether this field's nested `FromArgs` struct is inlined (flattened)
+    /// into the enclosing command's option/switch/positional table.
+    pub flatten: bool,
     pub default: Option<syn::LitStr>,
     pub description: Option<Description>,
     pub from_str_fn: Option<syn::ExprPath>,
@@ -79,8 +82,10 @@ pub enum FieldKind {
     /// They are parsed in declaration order, and only the last positional
     /// argument in a type may be an `Option`, `Vec`, or have a default value.
     Positional,
+    /// A field whose nested `FromArgs` struct's fields are inlined (flattened)
+    /// into the enclosing command. Only valid with `#[argy(flatten)]`.
+    Flatten,
 }
-
 /// The type of a field on a `#![derive(FromArgs)]` struct.
 ///
 /// This is a simple wrapper around `FieldKind` which includes the `syn::Ident`
@@ -205,6 +210,8 @@ impl FieldAttrs {
                     this.hidden_help = true;
                 } else if name.is_ident("usage") {
                     this.usage = true;
+                } else if name.is_ident("flatten") {
+                    this.flatten = true;
                 } else if name.is_ident("value_delimiter") {
                     if let Some(m) = errors.expect_meta_name_value(&meta) {
                         this.parse_attr_value_delimiter(errors, m);
@@ -214,7 +221,7 @@ impl FieldAttrs {
                         &meta,
                         concat!(
                             "Invalid field-level `argy` attribute\n",
-                            "Expected one of: `alias`, `arg_name`, `conflicts_with`, `default`, `default_missing_value`, `description`, `env`, `from_str_fn`, `global`, ",
+                            "Expected one of: `alias`, `arg_name`, `conflicts_with`, `default`, `default_missing_value`, `description`, `env`, `flatten`, `from_str_fn`, `global`, ",
                             "`greedy`, `last`, `long`, `option`, `optional_value`, `required`, `requires`, `short`, `subcommand`, `switch`, `hidden_help`, `usage`, `value_delimiter`",
                         ),
                     );
@@ -304,6 +311,41 @@ impl FieldAttrs {
                             fields",
                     );
                 }
+            }
+        }
+        if this.flatten {
+            let mut invalid = Vec::new();
+            if this.field_type.is_some() {
+                invalid.push("a field kind (`option`/`switch`/`subcommand`/`positional`)");
+            }
+            for (present, name) in [
+                (this.long.is_some(), "`long`"),
+                (this.short.is_some(), "`short`"),
+                (this.default.is_some(), "`default`"),
+                (this.env.is_some(), "`env`"),
+                (this.from_str_fn.is_some(), "`from_str_fn`"),
+                (this.arg_name.is_some(), "`arg_name`"),
+                (this.greedy.is_some(), "`greedy`"),
+                (this.last, "`last`"),
+                (this.optional_value, "`optional_value`"),
+                (this.default_missing_value.is_some(), "`default_missing_value`"),
+                (this.required, "`required`"),
+                (this.hidden_help, "`hidden_help`"),
+                (this.usage, "`usage`"),
+                (this.global, "`global`"),
+                (!this.aliases.is_empty(), "`alias`"),
+                (!this.conflicts_with.is_empty(), "`conflicts_with`"),
+                (!this.requires.is_empty(), "`requires`"),
+            ] {
+                if present {
+                    invalid.push(name);
+                }
+            }
+            if !invalid.is_empty() {
+                errors.err(
+                    field,
+                    &format!("`flatten` may not be combined with {}", invalid.join(", ")),
+                );
             }
         }
 

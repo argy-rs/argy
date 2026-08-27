@@ -34,6 +34,7 @@ pub fn help(
     cmd_name_str_array_ident: syn::Ident,
     ty_attrs: &TypeAttrs,
     fields: &[StructField<'_>],
+    flatten_fields: &[StructField<'_>],
     subcommand: Option<&StructField<'_>>,
     help_triggers: &[String],
 ) -> TokenStream {
@@ -136,14 +137,30 @@ pub fn help(
         "display usage information",
         option_indent,
     );
+    // Render flattened (`#[argy(flatten)]`) fields' options inline at parent scope.
+    let (flattened_calculation, flattened_format_arg) = if flatten_fields.is_empty() {
+        (TokenStream::new(), TokenStream::new())
+    } else {
+        format_lit.push_str("{flattened}");
+        let fragments = flatten_fields.iter().map(|f| {
+            let ty = f.ty_without_wrapper;
+            quote! { <#ty as argy::FlattenFromArgs>::flatten_help_fragment() }
+        });
+        (
+            quote! {
+                let __flattened = [#( #fragments ),*].concat();
+            },
+            quote! { , flattened = __flattened },
+        )
+    };
 
-    let subcommand_calculation;
-    let subcommand_format_arg;
+    let subcommand_calculation: TokenStream;
+    let subcommand_format_arg: TokenStream;
     if let Some(subcommand) = subcommand {
         format_lit.push_str(SECTION_SEPARATOR);
         format_lit.push_str("Commands:{subcommands}");
         let subcommand_ty = subcommand.ty_without_wrapper;
-        subcommand_format_arg = quote! { subcommands = subcommands };
+        subcommand_format_arg = quote! { , subcommands = subcommands };
         subcommand_calculation = quote! {
             let subcommands = argy::print_subcommands(
                 <#subcommand_ty as argy::SubCommands>::COMMANDS
@@ -215,8 +232,9 @@ pub fn help(
 
     quote! { {
         #subcommand_calculation
+        #flattened_calculation
         #metadata
-        format!(#format_lit, metadata = __metadata, command_name = #cmd_name_str_array_ident.join(" "), #subcommand_format_arg)
+        format!(#format_lit, metadata = __metadata, command_name = #cmd_name_str_array_ident.join(" ") #flattened_format_arg #subcommand_format_arg)
     } }
 }
 
@@ -280,7 +298,7 @@ fn option_usage(out: &mut String, field: &StructField<'_>) {
     }
 
     match field.kind {
-        FieldKind::SubCommand | FieldKind::Positional => unreachable!(), // don't have long_name
+        FieldKind::SubCommand | FieldKind::Positional | FieldKind::Flatten => unreachable!(), // don't have long_name
         FieldKind::Switch => {
             // An `Option<bool>` switch accepts an optional inline value,
             // so render it as `[--flag[=<bool>]]`.
@@ -422,4 +440,42 @@ fn option_description_format(
         hidden: false,
     };
     argy_shared::write_description(out, &info, description_indent);
+}
+
+/// Build a static help fragment (option and positional description lines) for a
+/// flattened struct's fields, rendered inline at the parent command's scope.
+/// Called at the flattened type's own derive site; recursive flattening is
+/// handled by appending the nested fragments at runtime.
+pub fn flatten_help_fragment(errors: &Errors, fields: &[StructField<'_>]) -> String {
+    let mut out = String::new();
+    let options: Vec<_> =
+        fields.iter().filter(|f| f.long_name.is_some() && !f.attrs.hidden_help).collect();
+    if !options.is_empty() {
+        let option_indent = indent_for(
+            options
+                .iter()
+                .map(|o| {
+                    let long = o.long_name.as_ref().expect("missing long name for option");
+                    option_name(o.attrs.short.as_ref().map(syn::LitChar::value), long)
+                        .chars()
+                        .count()
+                })
+                .max()
+                .unwrap_or(0),
+        );
+        for option in options {
+            option_description(errors, &mut out, option, option_indent);
+        }
+    }
+    let positionals: Vec<_> =
+        fields.iter().filter(|f| f.kind == FieldKind::Positional && !f.attrs.hidden_help).collect();
+    if !positionals.is_empty() {
+        let positional_indent = indent_for(
+            positionals.iter().map(|p| p.positional_arg_name().chars().count()).max().unwrap_or(0),
+        );
+        for p in positionals {
+            positional_description(&mut out, p, positional_indent);
+        }
+    }
+    out
 }

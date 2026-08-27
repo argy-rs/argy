@@ -237,9 +237,56 @@ fn main() {
 }
 ```
 
-Providing `--host <h>` without `--user <u>` fails with a usage error; providing
-both (or neither) succeeds. Requirements may be mutual: if `a` requires `b`
-and `b` requires `a`, then either alone fails and both together succeed.
+## Flatten
+
+A field marked `#[argy(flatten)]` inlines the fields of a nested `FromArgs`
+struct into the enclosing command's option/switch/positional table. This is the
+argy equivalent of clap's `#[command(flatten)]`: it lets several commands share
+a common `Args` struct without repeating each field.
+
+```rust
+use argy::FromArgs;
+
+#[derive(FromArgs)]
+/// Shared connection options.
+struct Common {
+    /// host to connect to
+    #[argy(option)]
+    host: Option<String>,
+
+    /// force the operation
+    #[argy(switch)]
+    force: bool,
+}
+
+#[derive(FromArgs)]
+/// Connect to a remote host.
+struct Connect {
+    #[argy(flatten)]
+    common: Common,
+
+    /// target port
+    #[argy(option)]
+    port: Option<u16>,
+}
+
+fn main() {
+    let c: Connect = argy::from_env();
+}
+```
+
+Here `Connect` accepts `--host <h>`, `--force`, and `--port <p>` as if they
+were declared directly on `Connect`; the parsed value is available as
+`c.common.host` / `c.common.force`. A flattened struct may contain options,
+switches, positionals, and a subcommand, and may itself flatten further nested
+structs. Help output renders the flattened fields at the parent command's
+scope.
+
+`flatten` may not be combined with a field kind (`option`/`switch`/
+`subcommand`/`positional`) or with field-level attributes such as `long`,
+`short`, `default`, `env`, `alias`, or `required`.
+
+## Value enums
 
 ## Value enums
 

@@ -736,6 +736,58 @@ impl<T: FromArgs> FromArgs for Box<T> {
         T::redact_arg_values(command_name, args)
     }
 }
+/// A `FromArgs` type that can be inlined into a parent command via
+/// `#[argy(flatten)]`. The derive exposes a self-contained [`FlattenContribution`]
+/// that appends the nested type's option/switch/positional/subcommand entries to a
+/// parent's shared parse tables and builds the nested value from its filled slots.
+#[doc(hidden)]
+pub trait FlattenFromArgs: FromArgs {
+    /// The self-contained parse contribution for this type.
+    type Contribution: FlattenContribution<Self>;
+
+    /// Create a fresh parse contribution for this type.
+    fn flatten_contribution() -> Self::Contribution;
+
+    /// Static help fragment (option and positional lines) for this type's
+    /// fields, rendered inline at the parent command's scope.
+    fn flatten_help_fragment() -> String;
+}
+
+/// A self-contained parse contribution for a flattened [`FromArgs`] type.
+///
+/// The parent's generated `from_args` owns one contribution per flattened field
+/// and appends its entries to shared tables. The contribution borrows only its own
+/// option/positional/subcommand slots, so multiple flattened fields compose without
+/// aliasing, and it is consumed to build the nested value once parsing completes.
+#[doc(hidden)]
+pub trait FlattenContribution<T: FromArgs> {
+    /// Append this contribution's option/switch entries to the shared tables.
+    ///
+    /// `arg_to_slot` receives the `("--name", slot_index)` mappings (slot indices are
+    /// relative to `seen_base`, the offset of this contribution's slots within the
+    /// combined `seen` array). `slots` receives the corresponding
+    /// [`ParseStructOption`] entries. Returns the number of option/switch slots added.
+    #[allow(clippy::too_many_arguments)]
+    fn append<'a>(
+        &'a mut self,
+        arg_to_slot: &mut Vec<(&'static str, usize)>,
+        slots: &mut Vec<ParseStructOption<'a>>,
+        seen_base: usize,
+        positionals: &mut Vec<ParseStructPositional<'a>>,
+        last_is_repeating: &mut bool,
+        last_is_greedy: &mut bool,
+        subcommand: &mut Option<ParseStructSubCommand<'a>>,
+    ) -> usize;
+
+    /// Build the flattened value from the (now-filled) slots.
+    fn build(self) -> T;
+
+    /// Report required fields of this contribution that were not provided,
+    /// using the parent command's usage for error reporting. Called before
+    /// [`Self::build`] so a missing required option/positional/subcommand
+    /// surfaces as a clean usage error rather than an unwrap panic.
+    fn check_missing(&self, mri: &mut MissingRequirements);
+}
 
 /// A top-level `FromArgs` implementation that is not a subcommand.
 pub trait TopLevelCommand: FromArgs {}
@@ -1176,12 +1228,12 @@ impl_flag_for_integers![u8, u16, u32, u64, u128, i8, i16, i32, i64, i128,];
 /// `help_func`: Generate a help message.
 /// `version_func`: Generate a version message from the current command name.
 #[doc(hidden)]
-pub fn parse_struct_args(
+pub fn parse_struct_args<'a, 'b, 'c, 'd>(
     cmd_name: &[&str],
     args: &[&str],
-    mut parse_options: ParseStructOptions<'_>,
-    mut parse_positionals: ParseStructPositionals<'_>,
-    mut parse_subcommand: Option<ParseStructSubCommand<'_>>,
+    mut parse_options: ParseStructOptions<'a, 'b>,
+    mut parse_positionals: ParseStructPositionals<'a, 'c>,
+    mut parse_subcommand: Option<ParseStructSubCommand<'d>>,
     help_func: &dyn Fn() -> String,
     version_func: &dyn Fn(&[&str]) -> String,
 ) -> Result<(), EarlyExit> {
@@ -1253,15 +1305,15 @@ pub fn parse_struct_args(
 }
 
 #[doc(hidden)]
-pub struct ParseStructOptions<'a> {
+pub struct ParseStructOptions<'a, 'b> {
     /// A mapping from option string literals to the entry
     /// in the output table. This may contain multiple entries mapping to
     /// the same location in the table if both a short and long version
     /// of the option exist (`-z` and `--zoo`).
-    pub arg_to_slot: &'static [(&'static str, usize)],
+    pub arg_to_slot: &'a [(&'static str, usize)],
 
     /// The storage for argument output data.
-    pub slots: &'a mut [ParseStructOption<'a>],
+    pub slots: &'a mut [ParseStructOption<'b>],
 
     /// Parallel to `slots`, records which option/switch slots have been seen
     /// while parsing, so mutually exclusive options can be rejected.
@@ -1284,7 +1336,7 @@ pub struct ParseStructOptions<'a> {
     pub global_options: &'static [&'static str],
 }
 
-impl ParseStructOptions<'_> {
+impl ParseStructOptions<'_, '_> {
     /// Reject a slot if a mutually exclusive option has already been seen, then
     /// mark the slot as seen. `pos` is the slot index of the option being set.
     fn check_conflict(&mut self, pos: usize) -> Result<(), String> {
@@ -1394,7 +1446,7 @@ impl ParseStructOptions<'_> {
     /// slots, and return the remaining (non-global) arguments. This lets a
     /// `global` option declared on a parent be accepted after a subcommand has
     /// been matched. Arguments after a `--` terminator are left untouched.
-    fn filter_global_options<'b>(&mut self, args: &[&'b str]) -> Result<Vec<&'b str>, EarlyExit> {
+    fn filter_global_options<'s>(&mut self, args: &[&'s str]) -> Result<Vec<&'s str>, EarlyExit> {
         let mut filtered = Vec::new();
         let mut idx = 0;
         while idx < args.len() {
@@ -1591,13 +1643,13 @@ pub enum ParseStructOption<'a> {
 }
 
 #[doc(hidden)]
-pub struct ParseStructPositionals<'a> {
-    pub positionals: &'a mut [ParseStructPositional<'a>],
+pub struct ParseStructPositionals<'a, 'b> {
+    pub positionals: &'a mut [ParseStructPositional<'b>],
     pub last_is_repeating: bool,
     pub last_is_greedy: bool,
 }
 
-impl ParseStructPositionals<'_> {
+impl ParseStructPositionals<'_, '_> {
     /// Parse the next positional argument.
     ///
     /// `arg`: the argument supplied by the user.
@@ -1668,7 +1720,7 @@ pub struct ParseStructSubCommand<'a> {
 
     // The function to parse the subcommand arguments.
     #[allow(clippy::type_complexity)]
-    pub parse_func: &'a mut dyn FnMut(&[&str], &[&str]) -> Result<(), EarlyExit>,
+    pub parse_func: Box<dyn FnMut(&[&str], &[&str]) -> Result<(), EarlyExit> + 'a>,
 }
 
 impl ParseStructSubCommand<'_> {

@@ -1216,17 +1216,123 @@ Options:
         );
     }
 
+    #[derive(FromArgs, Debug, PartialEq)]
+    /// Has an optional-value option.
+    struct OptionalValueString {
+        /// a string that may be bare or explicit
+        #[argy(option, optional_value, default_missing_value = "bare-default")]
+        value: String,
+    }
+
+    #[test]
+    fn optional_value_bare_uses_default_missing_value() {
+        assert_output(&["--value"], OptionalValueString { value: "bare-default".into() });
+    }
+
+    #[test]
+    fn optional_value_equals_syntax() {
+        assert_output(&["--value=explicit"], OptionalValueString { value: "explicit".into() });
+    }
+
+    #[test]
+    fn optional_value_space_separated() {
+        assert_output(&["--value", "explicit"], OptionalValueString { value: "explicit".into() });
+    }
+
+    #[derive(FromArgs, Debug, PartialEq)]
+    /// Has an optional int option.
+    struct OptionalValueInt {
+        /// an int that may be bare or explicit
+        #[argy(option, optional_value, default_missing_value = "42")]
+        n: usize,
+    }
+
+    #[test]
+    fn optional_value_int_bare_and_explicit() {
+        assert_output(&["--n"], OptionalValueInt { n: 42 });
+        assert_output(&["--n=5"], OptionalValueInt { n: 5 });
+        assert_output(&["--n", "7"], OptionalValueInt { n: 7 });
+    }
+
+    #[derive(FromArgs, Debug, PartialEq)]
+    /// Has an optional `PathBuf` option.
+    struct OptionalValuePath {
+        /// a path that may be bare or explicit
+        #[argy(option, optional_value, default_missing_value = "/tmp/foo")]
+        path: std::path::PathBuf,
+    }
+
+    #[test]
+    fn optional_value_path_bare_and_explicit() {
+        assert_output(&["--path"], OptionalValuePath { path: "/tmp/foo".into() });
+        assert_output(&["--path=/tmp/bar"], OptionalValuePath { path: "/tmp/bar".into() });
+        assert_output(&["--path", "/tmp/baz"], OptionalValuePath { path: "/tmp/baz".into() });
+    }
+
+    #[derive(FromArgs, Debug, PartialEq)]
+    /// Has an optional `Option<String>` value.
+    struct OptionalValueOption {
+        /// an optional value
+        #[argy(option, optional_value, default_missing_value = "bare-default")]
+        value: Option<String>,
+    }
+
+    #[test]
+    fn optional_value_optional_absent_is_none() {
+        assert_output(&[], OptionalValueOption { value: None });
+        assert_output(&["--value"], OptionalValueOption { value: Some("bare-default".into()) });
+        assert_output(
+            &["--value=explicit"],
+            OptionalValueOption { value: Some("explicit".into()) },
+        );
+    }
+
+    #[test]
+    fn optional_value_with_default_falls_back_when_absent() {
+        #[derive(FromArgs, Debug, PartialEq)]
+        /// Has an optional-value option with a default.
+        struct Defaulted {
+            /// falls back to `default` when absent, `default_missing_value` when bare
+            #[argy(
+                option,
+                default = "String::from(\"absent\")",
+                optional_value,
+                default_missing_value = "bare"
+            )]
+            value: String,
+        }
+        assert_output(&[], Defaulted { value: "absent".into() });
+        assert_output(&["--value"], Defaulted { value: "bare".into() });
+        assert_output(&["--value=explicit"], Defaulted { value: "explicit".into() });
+    }
+
+    #[derive(FromArgs, Debug, PartialEq)]
+    /// A normal option requiring a value.
+    struct RequiredValueFallback {
+        /// a normal option
+        #[argy(option)]
+        value: String,
+    }
+
+    #[test]
+    fn required_value_fallback_requires_a_value() {
+        // A normal option without `optional_value` still requires a value.
+        assert_error::<RequiredValueFallback>(
+            &["--value"],
+            "No value provided for option '--value'.\n",
+        );
+    }
+
     #[test]
     #[cfg(feature = "help")]
-    fn choice_help() {
-        assert_help_string::<WithChoices>(
-            r"Usage: test_arg_0 [--choice1 <choice1>] --choice2 <choice2>
+    fn optional_value_usage_marker() {
+        assert_help_string::<OptionalValueString>(
+            r"Usage: test_arg_0 --value[=value]
 
-Test choices
+Has an optional-value option.
 
 Options:
-  --choice1     first choice with a default
-  --choice2     second choice.
+  --value       a string that may be bare or explicit
   --help, help  display usage information
 ",
         );

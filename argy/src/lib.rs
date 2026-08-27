@@ -1323,6 +1323,26 @@ impl ParseStructOptions<'_> {
                         .concat()
                 })?;
             }
+            ParseStructOption::OptionalValue { slot: ref mut pvs, missing_value } => {
+                // A bare occurrence fills the slot with `missing_value`; an
+                // explicit inline (`--foo=bar`) or following (`--foo bar`) value
+                // takes precedence. A following token is only consumed as the
+                // value when it does not look like a flag.
+                let value = inline_value.map_or_else(
+                    || match remaining_args.first() {
+                        Some(&next) if !next.starts_with('-') => {
+                            *remaining_args = &remaining_args[1..];
+                            next
+                        }
+                        _ => missing_value,
+                    },
+                    |v| v,
+                );
+                pvs.fill_slot(arg_name, value).map_err(|s| {
+                    ["Error parsing option '", arg_name, "' with value '", value, "': ", &s, "\n"]
+                        .concat()
+                })?;
+            }
         }
 
         Ok(())
@@ -1364,6 +1384,7 @@ impl ParseStructOptions<'_> {
     /// switches (`-a -b -c`). If a short in the cluster maps to a value-taking
     /// option, the remainder of the cluster is consumed as that option's value,
     /// falling back to the next argument when the cluster ends at that short.
+    #[allow(clippy::too_many_lines)]
     fn parse_cluster(&mut self, arg: &str, remaining_args: &mut &[&str]) -> Result<(), String> {
         let mut chars = arg[1..].chars();
         while let Some(c) = chars.next() {
@@ -1403,6 +1424,59 @@ impl ParseStructOptions<'_> {
                             ]
                             .concat()
                         })?;
+                    } else {
+                        pvs.fill_slot(&short, &rest).map_err(|s| {
+                            [
+                                "Error parsing option '",
+                                &short,
+                                "' with value '",
+                                &rest,
+                                "': ",
+                                &s,
+                                "\n",
+                            ]
+                            .concat()
+                        })?;
+                    }
+                    return Ok(());
+                }
+                ParseStructOption::OptionalValue { slot: pvs, missing_value } => {
+                    let rest: String = chars.collect();
+                    if rest.is_empty() {
+                        // A bare short option: use the following non-flag token
+                        // as the value, or fall back to `missing_value`.
+                        match remaining_args.first() {
+                            Some(&next) if !next.starts_with('-') => {
+                                *remaining_args = &remaining_args[1..];
+                                pvs.fill_slot(&short, next).map_err(|s| {
+                                    [
+                                        "Error parsing option '",
+                                        &short,
+                                        "' with value '",
+                                        next,
+                                        "': ",
+                                        &s,
+                                        "\n",
+                                    ]
+                                    .concat()
+                                })?;
+                            }
+                            _ => {
+                                let missing = *missing_value;
+                                pvs.fill_slot(&short, missing).map_err(|s| {
+                                    [
+                                        "Error parsing option '",
+                                        &short,
+                                        "' with value '",
+                                        missing,
+                                        "': ",
+                                        &s,
+                                        "\n",
+                                    ]
+                                    .concat()
+                                })?;
+                            }
+                        }
                     } else {
                         pvs.fill_slot(&short, &rest).map_err(|s| {
                             [
@@ -1469,6 +1543,9 @@ pub enum ParseStructOption<'a> {
     // A value which is parsed from the string following the `--` argument,
     // e.g. `--foo bar`.
     Value(&'a mut dyn ParseValueSlot),
+    // An option that may be provided bare (using `missing_value`) or with an
+    // explicit value, e.g. `--foo` or `--foo bar` / `--foo=bar`.
+    OptionalValue { slot: &'a mut dyn ParseValueSlot, missing_value: &'a str },
 }
 
 #[doc(hidden)]

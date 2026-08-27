@@ -297,6 +297,7 @@ struct StructField<'a> {
 impl<'a> StructField<'a> {
     /// Attempts to parse a field of a `#[derive(FromArgs)]` struct, pulling out the
     /// fields required for code generation.
+    #[allow(clippy::too_many_lines)]
     fn new(errors: &Errors, field: &'a syn::Field, attrs: FieldAttrs) -> Option<Self> {
         let name = field.ident.as_ref().expect("missing ident for named field");
 
@@ -401,6 +402,24 @@ impl<'a> StructField<'a> {
                     errors.err(
                         env,
                         "`env` may not be specified on repeating `#[argy(option)]` fields",
+                    );
+                }
+                _ => {}
+            }
+        }
+
+        if attrs.optional_value {
+            match kind {
+                FieldKind::Option
+                    if matches!(
+                        optionality,
+                        Optionality::Repeating | Optionality::DefaultedRepeating(_)
+                    ) =>
+                {
+                    errors.err(
+                        field,
+                        "`optional_value` may not be specified on repeating \
+                         `#[argy(option)]` fields",
                     );
                 }
                 _ => {}
@@ -527,6 +546,20 @@ fn impl_from_args_struct_from_args<'a>(
     let flag_output_table = fields.iter().filter_map(|field| {
         let field_name = &field.field.ident;
         match field.kind {
+            FieldKind::Option if field.attrs.optional_value => {
+                let missing = field
+                    .attrs
+                    .default_missing_value
+                    .as_ref()
+                    .expect("optional_value requires default_missing_value");
+                let missing_value = missing.value();
+                Some(quote! {
+                    argy::ParseStructOption::OptionalValue {
+                        slot: &mut #field_name,
+                        missing_value: #missing_value,
+                    }
+                })
+            }
             FieldKind::Option => Some(quote! { argy::ParseStructOption::Value(&mut #field_name) }),
             FieldKind::Switch => Some(quote! { argy::ParseStructOption::Flag(&mut #field_name) }),
             FieldKind::SubCommand | FieldKind::Positional => None,
@@ -759,6 +792,20 @@ fn impl_from_args_struct_redact_arg_values<'a>(
     let flag_output_table = fields.iter().filter_map(|field| {
         let field_name = &field.field.ident;
         match field.kind {
+            FieldKind::Option if field.attrs.optional_value => {
+                let missing = field
+                    .attrs
+                    .default_missing_value
+                    .as_ref()
+                    .expect("optional_value requires default_missing_value");
+                let missing_value = missing.value();
+                Some(quote! {
+                    argy::ParseStructOption::OptionalValue {
+                        slot: &mut #field_name,
+                        missing_value: #missing_value,
+                    }
+                })
+            }
             FieldKind::Option => Some(quote! { argy::ParseStructOption::Value(&mut #field_name) }),
             FieldKind::Switch => Some(quote! { argy::ParseStructOption::Flag(&mut #field_name) }),
             FieldKind::SubCommand | FieldKind::Positional => None,

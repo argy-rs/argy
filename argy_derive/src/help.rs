@@ -284,19 +284,31 @@ fn option_usage(out: &mut String, field: &StructField<'_>) {
             }
         }
         FieldKind::Option => {
-            out.push_str(" <");
-            if let Some(arg_name) = &field.attrs.arg_name {
-                out.push_str(&arg_name.value());
+            if field.attrs.optional_value {
+                // An optional-value option accepts a bare occurrence or an
+                // explicit value, so render the value part as `[=<name>]`.
+                out.push_str("[=");
+                if let Some(arg_name) = &field.attrs.arg_name {
+                    out.push_str(&arg_name.value());
+                } else {
+                    out.push_str(long_name.trim_start_matches("--"));
+                }
+                out.push(']');
             } else {
-                out.push_str(long_name.trim_start_matches("--"));
+                out.push_str(" <");
+                if let Some(arg_name) = &field.attrs.arg_name {
+                    out.push_str(&arg_name.value());
+                } else {
+                    out.push_str(long_name.trim_start_matches("--"));
+                }
+                if matches!(
+                    field.optionality,
+                    Optionality::Repeating | Optionality::DefaultedRepeating(_)
+                ) {
+                    out.push_str("...");
+                }
+                out.push('>');
             }
-            if matches!(
-                field.optionality,
-                Optionality::Repeating | Optionality::DefaultedRepeating(_)
-            ) {
-                out.push_str("...");
-            }
-            out.push('>');
         }
     }
 

@@ -27,6 +27,12 @@ pub struct FieldAttrs {
     /// not provided on the command line. Only valid on `#[argy(option)]` and
     /// `#[argy(switch)]` fields.
     pub env: Option<syn::LitStr>,
+    /// Whether the option may appear bare (without a value), falling back to
+    /// `default_missing_value`. Only valid on `#[argy(option)]` fields.
+    pub optional_value: bool,
+    /// The value used when an `optional_value` option is provided without an
+    /// explicit value. Requires `optional_value`.
+    pub default_missing_value: Option<syn::LitStr>,
     /// Whether a greedy positional must be provided at least once.
     /// Only valid on `#[argy(positional, greedy)]` fields.
     pub required: bool,
@@ -121,6 +127,19 @@ impl FieldAttrs {
                     if let Some(m) = errors.expect_meta_name_value(&meta) {
                         parse_attr_description(errors, m, &mut this.description);
                     }
+                } else if name.is_ident("optional_value") {
+                    if errors.expect_meta_word(&meta).is_some() {
+                        this.optional_value = true;
+                    }
+                } else if name.is_ident("default_missing_value") {
+                    if let Some(m) = errors.expect_meta_name_value(&meta) {
+                        parse_attr_single_string(
+                            errors,
+                            m,
+                            "default_missing_value",
+                            &mut this.default_missing_value,
+                        );
+                    }
                 } else if name.is_ident("env") {
                     if let Some(m) = errors.expect_meta_name_value(&meta) {
                         this.parse_attr_env(errors, m);
@@ -172,23 +191,42 @@ impl FieldAttrs {
                         &meta,
                         concat!(
                             "Invalid field-level `argy` attribute\n",
-                            "Expected one of: `alias`, `arg_name`, `conflicts_with`, `default`, `description`, `env`, `from_str_fn`, `global`, ",
-                            "`greedy`, `long`, `option`, `required`, `short`, `subcommand`, `switch`, `hidden_help`, `usage`",
+                            "Expected one of: `alias`, `arg_name`, `conflicts_with`, `default`, `default_missing_value`, `description`, `env`, `from_str_fn`, `global`, ",
+                            "`greedy`, `long`, `option`, `optional_value`, `required`, `short`, `subcommand`, `switch`, `hidden_help`, `usage`",
                         ),
                     );
                 }
             }
         }
 
-        if let (Some(default), Some(field_type)) = (&this.default, &this.field_type) {
-            match field_type.kind {
-                FieldKind::Option | FieldKind::Positional => {}
-                FieldKind::SubCommand | FieldKind::Switch => errors.err(
-                    default,
-                    "`default` may only be specified on `#[argy(option)]` \
-                     or `#[argy(positional)]` fields",
-                ),
+        if this.optional_value {
+            match this.field_type.as_ref().map(|f| f.kind) {
+                Some(FieldKind::Option) => {}
+                _ => {
+                    errors.err(
+                        field,
+                        "`optional_value` may only be specified on `#[argy(option)]` fields",
+                    );
+                }
             }
+        }
+
+        if let Some(dmv) = &this.default_missing_value {
+            if !this.optional_value {
+                errors.err(
+                    dmv,
+                    "`default_missing_value` requires `optional_value` and may only be \
+                     specified on `#[argy(option)]` fields",
+                );
+            }
+        }
+
+        if this.optional_value && this.default_missing_value.is_none() {
+            errors.err(
+                field,
+                "`optional_value` requires a `default_missing_value` to use when the option \
+                 is provided without a value",
+            );
         }
 
         if !this.aliases.is_empty() {

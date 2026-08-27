@@ -137,10 +137,47 @@ struct FiveStruct {
     five: usize,
 }
 
-fn always_five(_value: &str) -> Result<usize, String> {
-    Ok(5)
+## Optional-value options
+
+An option declared with `optional_value` may be provided either bare (with no
+value) or with an explicit value, matching clap's `num_args=0..=1`. When it
+appears bare, it is filled with the value given by `default_missing_value`;
+when provided with a value (via `--flag=value` or `--flag value`) that value
+is used instead.
+
+```rust
+use argy::FromArgs;
+
+#[derive(FromArgs)]
+/// Has an optional-value option.
+struct GoUp {
+    /// a height that may be given explicitly or default to 5 when bare
+    #[argy(option, optional_value, default_missing_value = "5")]
+    height: usize,
+
+    /// an optional value that may be bare or explicit
+    #[argy(option, optional_value, default_missing_value = "/tmp/out")]
+    output: Option<std::path::PathBuf>,
+}
+
+fn main() {
+    let up: GoUp = argy::from_env();
+    // `--height 7`      => height: 7
+    // `--height=7`      => height: 7
+    // `--height`        => height: 5 (the `default_missing_value`)
+    // omitted           => error: height is required (no default)
+    println!("height: {}, output: {:?}", up.height, up.output);
 }
 ```
+
+An `optional_value` option behaves like any other option with respect to
+requiredness: a plain field (not `Option` and with no `default`) is required
+and errors when omitted, while an `Option<T>` field is `None` when absent and
+a field with `default` falls back to that value when absent. The
+`default_missing_value` is only consulted when the option is actually provided
+without a value.
+
+## Value enums
 
 ## Value enums
 

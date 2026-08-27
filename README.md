@@ -137,6 +137,11 @@ struct FiveStruct {
     five: usize,
 }
 
+fn always_five(_value: &str) -> Result<usize, String> {
+    Ok(5)
+}
+```
+
 ## Value delimiter
 
 A repeating `#[argy(option)]` field wrapped in `Vec` can be filled from a

@@ -43,6 +43,7 @@ pub fn help(
         f.kind == FieldKind::Positional && f.attrs.greedy.is_none() && !f.attrs.hidden_help
     });
     let has_positional = positional.clone().next().is_some();
+    let has_plain_positional = positional.clone().any(|f| !f.attrs.last);
     let options = fields.iter().filter(|f| f.long_name.is_some() && !f.attrs.hidden_help);
 
     if let Some(usage) = &ty_attrs.usage {
@@ -61,7 +62,7 @@ pub fn help(
             option_usage(&mut format_lit, option);
         }
 
-        if has_positional && subcommand.is_none() {
+        if has_plain_positional && subcommand.is_none() {
             format_lit.push_str(" [--]");
         }
 
@@ -236,11 +237,15 @@ fn lits_section(out: &mut String, heading: &str, lits: &[syn::LitStr]) {
 }
 
 /// Add positional arguments like `[<foo>...]` to a help format string.
+/// A `last` positional is rendered like `[-- <foo>...]` (clap `last` parity).
 fn positional_usage(out: &mut String, field: &StructField<'_>) {
     let required =
         field.optionality.is_required() || (field.attrs.greedy.is_some() && field.attrs.required);
     if !required {
         out.push('[');
+    }
+    if field.attrs.last {
+        out.push_str("-- ");
     }
     if field.attrs.greedy.is_none() {
         out.push('<');

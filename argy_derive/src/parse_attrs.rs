@@ -23,6 +23,11 @@ pub struct FieldAttrs {
     pub short: Option<syn::LitChar>,
     pub arg_name: Option<syn::LitStr>,
     pub greedy: Option<syn::Path>,
+    /// Whether this positional is a `last` trailing variadic: it matches only
+    /// the trailing arguments after all options are consumed, and never
+    /// swallows option-looking tokens (unlike `greedy`). Only valid on the
+    /// final `#[argy(positional)]` `Vec` field (clap `last` parity).
+    pub last: bool,
     /// Environment variable that supplies the value when the option/switch is
     /// not provided on the command line. Only valid on `#[argy(option)]` and
     /// `#[argy(switch)]` fields.
@@ -176,6 +181,8 @@ impl FieldAttrs {
                     );
                 } else if name.is_ident("greedy") {
                     this.greedy = Some(name.clone());
+                } else if name.is_ident("last") {
+                    this.last = true;
                 } else if name.is_ident("required") {
                     this.required = true;
                     required_span = Some(meta.span());
@@ -192,7 +199,7 @@ impl FieldAttrs {
                         concat!(
                             "Invalid field-level `argy` attribute\n",
                             "Expected one of: `alias`, `arg_name`, `conflicts_with`, `default`, `default_missing_value`, `description`, `env`, `from_str_fn`, `global`, ",
-                            "`greedy`, `long`, `option`, `optional_value`, `required`, `short`, `subcommand`, `switch`, `hidden_help`, `usage`",
+                            "`greedy`, `last`, `long`, `option`, `optional_value`, `required`, `short`, `subcommand`, `switch`, `hidden_help`, `usage`",
                         ),
                     );
                 }
@@ -256,6 +263,16 @@ impl FieldAttrs {
                     fields",
             ),
             _ => {}
+        }
+
+        if this.last {
+            match this.field_type.as_ref().map(|f| f.kind) {
+                Some(FieldKind::Positional) => {}
+                _ => {
+                    errors
+                        .err(field, "`last` may only be specified on `#[argy(positional)]` fields");
+                }
+            }
         }
 
         if this.required {

@@ -1,0 +1,5 @@
+error: `last` may only be specified on `#[argy(positional)]` fields
+ --> tests/ui/last-attribute/last-on-non-positional.rs:4:5
+  |
+4 |     #[argy(option, last)]
+  |     ^

@@ -1,0 +1,5 @@
+error: `last` may only be specified on a repeating (`Vec`) positional argument.
+ --> tests/ui/last-attribute/last-not-repeating.rs:4:5
+  |
+4 |     #[argy(positional, last)]
+  |     ^

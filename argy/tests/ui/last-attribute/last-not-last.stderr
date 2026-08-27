@@ -1,0 +1,17 @@
+error: Only the last positional argument may be `Option`, `Vec`, or defaulted.
+ --> tests/ui/last-attribute/last-not-last.rs:4:5
+  |
+4 |     #[argy(positional, last)]
+  |     ^
+
+error: Later positional argument declared here.
+ --> tests/ui/last-attribute/last-not-last.rs:7:5
+  |
+7 |     #[argy(positional)]
+  |     ^
+
+error: `last` may only be specified on the last positional argument.
+ --> tests/ui/last-attribute/last-not-last.rs:4:5
+  |
+4 |     #[argy(positional, last)]
+  |     ^

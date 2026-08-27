@@ -178,8 +178,33 @@
 //! extra help output for the meaning of the captured arguments. This is to
 //! enable situations where some amount of argument processing needs to happen
 //! before the rest of the arguments can be interpreted, and shouldn't be used
-//! for regular use as it might be confusing.
+//! If instead your final positional argument is a `Vec` marked with the `last`
+//! attribute, it becomes a trailing variadic that consumes only the trailing
+//! arguments after all options are parsed; options may appear before or after
+//! its values and are still parsed as options (unlike `greedy`). Its usage
+//! line renders with a `--` separator, mirroring clap's `last = true`:
 //!
+//! ```rust
+//! use argy::FromArgs;
+//! #[derive(FromArgs, PartialEq, Debug)]
+//! /// A command with a trailing variadic positional.
+//! struct Run {
+//!     /// how verbose
+//!     #[argy(switch)]
+//!     verbose: bool,
+//!     /// command and its arguments
+//!     #[argy(positional, last)]
+//!     command: Vec<String>,
+//! }
+//! ```
+//!
+//! `--verbose foo bar` parses `verbose` as `true` and `command` as
+//! `["foo", "bar"]`; only the last positional may be `last`, and it must be a
+//! `Vec`.
+//!
+//! Subcommands are also supported. To use a subcommand, declare a separate
+//! `FromArgs` type for each subcommand as well as an enum that cases
+//! over each command:
 //! Subcommands are also supported. To use a subcommand, declare a separate
 //! `FromArgs` type for each subcommand as well as an enum that cases
 //! over each command:

@@ -499,6 +499,7 @@ fn impl_from_args_struct(
 
     ensure_unique_names(errors, &fields);
     ensure_only_last_positional_is_optional(errors, &fields);
+    ensure_last_positional_valid(errors, &fields);
 
     let impl_span = Span::call_site();
 
@@ -948,6 +949,29 @@ fn ensure_only_last_positional_is_optional(errors: &Errors, fields: &[StructFiel
             if !field.optionality.is_required() {
                 first_non_required_span = Some(field.field.span());
             }
+        }
+    }
+}
+
+/// Ensures that a `#[argy(positional, last)]` field is the final positional
+/// argument and is a repeating `Vec` (clap `last` parity).
+fn ensure_last_positional_valid(errors: &Errors, fields: &[StructField<'_>]) {
+    let positionals: Vec<&StructField<'_>> =
+        fields.iter().filter(|f| f.kind == FieldKind::Positional).collect();
+    for (i, field) in positionals.iter().enumerate() {
+        if !field.attrs.last {
+            continue;
+        }
+        if i != positionals.len() - 1 {
+            errors
+                .err(&field.field, "`last` may only be specified on the last positional argument.");
+        }
+        if !matches!(field.optionality, Optionality::Repeating | Optionality::DefaultedRepeating(_))
+        {
+            errors.err(
+                &field.field,
+                "`last` may only be specified on a repeating (`Vec`) positional argument.",
+            );
         }
     }
 }

@@ -236,8 +236,36 @@ struct WithPositional {
 }
 ```
 
-The last positional argument may include a default, or be wrapped in
-`Option` or `Vec` to indicate an optional or repeating positional argument.
+If that final positional argument is wrapped in `Vec` and marked with the
+`last` attribute, it acts as a trailing variadic that consumes only the
+trailing arguments after all options have been parsed. Options may appear
+before or after its values and are still parsed as options (unlike the
+greedy capture of all remaining input). Its usage line renders with a `--`
+separator, mirroring clap's `last = true`:
+
+```rust
+use argy::FromArgs;
+
+#[derive(FromArgs, PartialEq, Debug)]
+/// A command with a trailing variadic positional.
+struct Run {
+    /// how verbose
+    #[argy(switch)]
+    verbose: bool,
+    /// command and its arguments
+    #[argy(positional, last)]
+    command: Vec<String>,
+}
+```
+
+`["foo", "bar"]` (the `--` separates the trailing positional); `foo bar`
+parses `command` as `["foo", "bar"]`.
+`["foo", "--", "bar"]`; `foo bar` parses `command` as `["foo", "bar"]`.
+Only the last positional may be marked `last`, and it must be a `Vec`.
+
+Subcommands are also supported. To use a subcommand, declare a separate
+`FromArgs` type for each subcommand as well as an enum that cases
+over each command:
 
 Subcommands are also supported. To use a subcommand, declare a separate
 `FromArgs` type for each subcommand as well as an enum that cases

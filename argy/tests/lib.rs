@@ -1464,6 +1464,85 @@ Options:
 
     #[derive(FromArgs, Debug, PartialEq)]
     /// Woot
+    struct WithLast {
+        #[argy(option)]
+        /// stuff
+        c: Option<String>,
+        #[argy(switch)]
+        /// woo
+        b: bool,
+        #[argy(positional, last)]
+        /// trailing
+        d: Vec<String>,
+    }
+
+    #[test]
+    #[cfg(feature = "help")]
+    fn last() {
+        // Empty case: no trailing args.
+        assert_output(&[], WithLast { c: None, b: false, d: vec![] });
+        // Options before the trailing positional.
+        assert_output(
+            &["--c", "hi", "a", "b"],
+            WithLast { c: Some("hi".into()), b: false, d: vec!["a".into(), "b".into()] },
+        );
+        // Options after the trailing positional are still parsed, not swallowed.
+        assert_output(
+            &["a", "--c", "hi", "b"],
+            WithLast { c: Some("hi".into()), b: false, d: vec!["a".into(), "b".into()] },
+        );
+        // Mixed flags interleaved with trailing positional values.
+        assert_output(
+            &["a", "--b", "c", "--c", "hi", "d"],
+            WithLast { c: Some("hi".into()), b: true, d: vec!["a".into(), "c".into(), "d".into()] },
+        );
+        // `--` separates everything after it into the trailing positional.
+        assert_output(
+            &["--c", "hi", "--", "a", "--b", "c"],
+            WithLast {
+                c: Some("hi".into()),
+                b: false,
+                d: vec!["a".into(), "--b".into(), "c".into()],
+            },
+        );
+        assert_help_string::<WithLast>(
+            r"Usage: test_arg_0 [--c <c>] [--b] [-- <d...>]
+
+Woot
+
+Positional Arguments:
+  d  trailing
+
+Options:
+  --c           stuff
+  --b           woo
+  --help, help  display usage information
+",
+        );
+    }
+
+    #[derive(FromArgs, Debug, PartialEq)]
+    /// Woot
+    struct WithFirstAndLast {
+        #[argy(positional)]
+        /// fooey
+        first: String,
+        #[argy(positional, last)]
+        /// trailing
+        rest: Vec<String>,
+    }
+
+    #[test]
+    fn last_after_plain_positional() {
+        assert_output(
+            &["a", "b", "c"],
+            WithFirstAndLast { first: "a".into(), rest: vec!["b".into(), "c".into()] },
+        );
+        assert_output(&["a"], WithFirstAndLast { first: "a".into(), rest: vec![] });
+    }
+
+    #[derive(FromArgs, Debug, PartialEq)]
+    /// Woot
     struct RequiredGreedy {
         #[argy(positional)]
         /// fooey

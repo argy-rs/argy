@@ -67,7 +67,7 @@ fn impl_from_args(input: &syn::DeriveInput) -> TokenStream {
     let type_attrs = &TypeAttrs::parse(errors, input);
     let mut output_tokens = match &input.data {
         syn::Data::Struct(ds) => {
-            impl_from_args_struct(errors, &input.ident, type_attrs, &input.generics, ds)
+            impl_from_args_struct(errors, &input.ident, type_attrs, &input.generics, &input.vis, ds)
         }
         syn::Data::Enum(de) => {
             impl_from_args_enum(errors, &input.ident, type_attrs, &input.generics, de)
@@ -501,6 +501,7 @@ fn impl_from_args_struct(
     name: &syn::Ident,
     type_attrs: &TypeAttrs,
     generic_args: &syn::Generics,
+    vis: &syn::Visibility,
     ds: &syn::DataStruct,
 ) -> TokenStream {
     let fields = match &ds.fields {
@@ -545,7 +546,7 @@ fn impl_from_args_struct(
     let top_or_sub_cmd_impl = top_or_sub_cmd_impl(errors, name, type_attrs, generic_args);
 
     let flatten_contribution_impl =
-        impl_flatten_contribution(errors, name, generic_args, &fields, &flatten_fields);
+        impl_flatten_contribution(errors, name, generic_args, vis, &fields, &flatten_fields);
 
     let (impl_generics, ty_generics, where_clause) = generic_args.split_for_impl();
     let trait_impl = quote_spanned! { impl_span =>
@@ -1069,6 +1070,7 @@ fn impl_flatten_contribution<'a>(
     errors: &Errors,
     name: &syn::Ident,
     generic_args: &syn::Generics,
+    vis: &syn::Visibility,
     fields: &'a [StructField<'a>],
     flatten_fields: &'a [StructField<'a>],
 ) -> TokenStream {
@@ -1348,7 +1350,7 @@ fn impl_flatten_contribution<'a>(
     quote! {
         #[automatically_derived]
         #[doc(hidden)]
-        struct #contribution_ident #impl_generics #where_clause {
+        #vis struct #contribution_ident #impl_generics #where_clause {
             #( #struct_fields, )*
             #( #nested_struct_fields, )*
         }

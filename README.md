@@ -371,10 +371,9 @@ struct Run {
 }
 ```
 
-`["foo", "bar"]` (the `--` separates the trailing positional); `foo bar`
-parses `command` as `["foo", "bar"]`.
-`["foo", "--", "bar"]`; `foo bar` parses `command` as `["foo", "bar"]`.
-Only the last positional may be marked `last`, and it must be a `Vec`.
+	`--verbose foo bar` parses `verbose` as `true` and `command` as
+	`["foo", "bar"]`; only the last positional may be marked `last`, and it
+	must be a `Vec`.
 
 Subcommands are also supported. To use a subcommand, declare a separate
 `FromArgs` type for each subcommand as well as an enum that cases

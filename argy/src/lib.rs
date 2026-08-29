@@ -1049,15 +1049,28 @@ pub trait ParseFlag {
     }
 }
 
+// Non-generic cold-path formatter shared by all option/switch value-parse error
+// sites. Marked `#[cold]` so the (rare) error formatting stays out of the hot
+// parse loop's inline body.
+#[cold]
+fn option_parse_error(arg: &str, value: &str, e: &str) -> String {
+    ["Error parsing option '", arg, "' with value '", value, "': ", e, "\n"].concat()
+}
+
+// Non-generic: the option-value error message body is compiled once instead of
+// once per flag type.
+fn format_flag_value_error(e: &str, arg: &str, value: &str) -> String {
+    ["Error parsing option '", arg, "' with value '", value, "': ", e, "\n"].concat()
+}
+
 impl<T: Flag> ParseFlag for T {
     fn set_flag(&mut self, _arg: &str) {
         <T as Flag>::set_flag(self);
     }
 
     fn set_flag_value(&mut self, arg: &str, value: &str) -> Result<(), String> {
-        <T as Flag>::set_flag_value(self, value).map_err(|e| {
-            ["Error parsing option '", arg, "' with value '", value, "': ", &e, "\n"].concat()
-        })
+        <T as Flag>::set_flag_value(self, value)
+            .map_err(|e| format_flag_value_error(&e, arg, value))
     }
 }
 
@@ -1259,7 +1272,6 @@ pub fn parse_struct_args<'a, 'b, 'c, 'd>(
                 options_ended = true;
                 continue;
             }
-
             if help {
                 return Err("Trailing arguments are not allowed after `help`.".to_string().into());
             }
@@ -1268,13 +1280,12 @@ pub fn parse_struct_args<'a, 'b, 'c, 'd>(
                     .to_string()
                     .into());
             }
-
             parse_options.parse(next_arg, &mut remaining_args)?;
             continue;
         }
 
         if let Some(parse_subcommand) = &mut parse_subcommand {
-            if parse_subcommand.matches(next_arg) {
+            if let Some(subcommand) = parse_subcommand.find_subcommand(next_arg) {
                 // Strip global options from the remaining arguments so a
                 // `global` option declared on this command is also accepted
                 // after the subcommand. Skips allocation when there are none.
@@ -1285,7 +1296,7 @@ pub fn parse_struct_args<'a, 'b, 'c, 'd>(
                     filtered_args = parse_options.filter_global_options(remaining_args)?;
                     &filtered_args
                 };
-                parse_subcommand.parse(help, cmd_name, next_arg, sub_args)?;
+                parse_subcommand.parse(help, cmd_name, subcommand, sub_args)?;
                 // Unset `help`, since we handled it in the subcommand
                 help = false;
                 break 'parse_args;
@@ -1412,10 +1423,8 @@ impl ParseStructOptions<'_, '_> {
                 if inline_value.is_none() {
                     *remaining_args = &remaining_args[1..];
                 }
-                pvs.fill_slot(arg_name, value).map_err(|s| {
-                    ["Error parsing option '", arg_name, "' with value '", value, "': ", &s, "\n"]
-                        .concat()
-                })?;
+                pvs.fill_slot(arg_name, value)
+                    .map_err(|s| option_parse_error(arg_name, value, &s))?;
             }
             ParseStructOption::OptionalValue { slot: ref mut pvs, missing_value } => {
                 // A bare occurrence fills the slot with `missing_value`; an
@@ -1432,10 +1441,8 @@ impl ParseStructOptions<'_, '_> {
                     },
                     |v| v,
                 );
-                pvs.fill_slot(arg_name, value).map_err(|s| {
-                    ["Error parsing option '", arg_name, "' with value '", value, "': ", &s, "\n"]
-                        .concat()
-                })?;
+                pvs.fill_slot(arg_name, value)
+                    .map_err(|s| option_parse_error(arg_name, value, &s))?;
             }
         }
 
@@ -1447,7 +1454,7 @@ impl ParseStructOptions<'_, '_> {
     /// `global` option declared on a parent be accepted after a subcommand has
     /// been matched. Arguments after a `--` terminator are left untouched.
     fn filter_global_options<'s>(&mut self, args: &[&'s str]) -> Result<Vec<&'s str>, EarlyExit> {
-        let mut filtered = Vec::new();
+        let mut filtered = Vec::with_capacity(args.len());
         let mut idx = 0;
         while idx < args.len() {
             let arg = args[idx];
@@ -1482,7 +1489,11 @@ impl ParseStructOptions<'_, '_> {
     fn parse_cluster(&mut self, arg: &str, remaining_args: &mut &[&str]) -> Result<(), String> {
         let mut chars = arg[1..].chars();
         while let Some(c) = chars.next() {
-            let short = ['-', c].iter().collect::<String>();
+            let mut short_buf = [0u8; 5];
+            short_buf[0] = b'-';
+            let c_len = c.len_utf8();
+            c.encode_utf8(&mut short_buf[1..=c_len]);
+            let short: &str = std::str::from_utf8(&short_buf[..=c_len]).unwrap();
             let pos = self
                 .arg_to_slot
                 .iter()
@@ -1498,92 +1509,42 @@ impl ParseStructOptions<'_, '_> {
             self.check_conflict(pos)?;
 
             match &mut self.slots[pos] {
-                ParseStructOption::Flag(b) => b.set_flag(&short),
+                ParseStructOption::Flag(b) => b.set_flag(short),
                 ParseStructOption::Value(pvs) => {
-                    let rest: String = chars.collect();
+                    let rest: &str = chars.as_str();
                     if rest.is_empty() {
                         let value = remaining_args.first().ok_or_else(|| {
-                            ["No value provided for option '", &short, "'.\n"].concat()
+                            ["No value provided for option '", short, "'.\n"].concat()
                         })?;
                         *remaining_args = &remaining_args[1..];
-                        pvs.fill_slot(&short, value).map_err(|s| {
-                            [
-                                "Error parsing option '",
-                                &short,
-                                "' with value '",
-                                value,
-                                "': ",
-                                &s,
-                                "\n",
-                            ]
-                            .concat()
-                        })?;
+                        pvs.fill_slot(short, value)
+                            .map_err(|s| option_parse_error(short, value, &s))?;
                     } else {
-                        pvs.fill_slot(&short, &rest).map_err(|s| {
-                            [
-                                "Error parsing option '",
-                                &short,
-                                "' with value '",
-                                &rest,
-                                "': ",
-                                &s,
-                                "\n",
-                            ]
-                            .concat()
-                        })?;
+                        pvs.fill_slot(short, rest)
+                            .map_err(|s| option_parse_error(short, rest, &s))?;
                     }
                     return Ok(());
                 }
                 ParseStructOption::OptionalValue { slot: pvs, missing_value } => {
-                    let rest: String = chars.collect();
+                    let rest: &str = chars.as_str();
                     if rest.is_empty() {
                         // A bare short option: use the following non-flag token
                         // as the value, or fall back to `missing_value`.
                         match remaining_args.first() {
                             Some(&next) if !next.starts_with('-') => {
                                 *remaining_args = &remaining_args[1..];
-                                pvs.fill_slot(&short, next).map_err(|s| {
-                                    [
-                                        "Error parsing option '",
-                                        &short,
-                                        "' with value '",
-                                        next,
-                                        "': ",
-                                        &s,
-                                        "\n",
-                                    ]
-                                    .concat()
-                                })?;
+                                pvs.fill_slot(short, next)
+                                    .map_err(|s| option_parse_error(short, next, &s))?;
                             }
                             _ => {
                                 let missing = *missing_value;
-                                pvs.fill_slot(&short, missing).map_err(|s| {
-                                    [
-                                        "Error parsing option '",
-                                        &short,
-                                        "' with value '",
-                                        missing,
-                                        "': ",
-                                        &s,
-                                        "\n",
-                                    ]
-                                    .concat()
-                                })?;
+                                pvs.fill_slot(short, missing)
+                                    .map_err(|s| option_parse_error(short, missing, &s))?;
                             }
                         }
                     } else {
-                        pvs.fill_slot(&short, &rest).map_err(|s| {
-                            [
-                                "Error parsing option '",
-                                &short,
-                                "' with value '",
-                                &rest,
-                                "': ",
-                                &s,
-                                "\n",
-                            ]
-                            .concat()
-                        })?;
+                        pvs.fill_slot(short, rest)
+                            .map_err(|s| option_parse_error(short, rest, &s))?;
                     }
                     return Ok(());
                 }
@@ -1724,38 +1685,37 @@ pub struct ParseStructSubCommand<'a> {
 }
 
 impl ParseStructSubCommand<'_> {
-    /// Returns `true` if `arg` names one of the subcommands (or its alias or
-    /// short form). Does not invoke the subcommand parser.
-    fn matches(&self, arg: &str) -> bool {
-        self.subcommands.iter().chain(self.dynamic_subcommands.iter()).any(|subcommand| {
-            subcommand.name == arg
-                || subcommand.aliases.contains(&arg)
-                || arg.chars().count() == 1 && arg.chars().next().unwrap() == *subcommand.short
-        })
-    }
-
-    /// Invoke the subcommand parser for a subcommand already known to match
-    /// `arg` (via [`ParseStructSubCommand::matches`]).
-    fn parse(
-        &mut self,
-        help: bool,
-        cmd_name: &[&str],
-        arg: &str,
-        remaining_args: &[&str],
-    ) -> Result<(), EarlyExit> {
-        let subcommand = self
-            .subcommands
+    /// Returns the subcommand that `arg` names (by exact name, alias, or
+    /// single-char short form), if any. Does not invoke the subcommand parser.
+    /// Scans the subcommand table exactly once per dispatch.
+    fn find_subcommand(&self, arg: &str) -> Option<&'static CommandInfo> {
+        // `arg` can only be a short form when it is a single character, so
+        // compute its char count once up front instead of per subcommand.
+        let arg_is_short = arg.chars().count() == 1;
+        let arg_short = arg_is_short.then(|| arg.chars().next().unwrap());
+        self.subcommands
             .iter()
             .chain(self.dynamic_subcommands.iter())
             .find(|subcommand| {
                 subcommand.name == arg
                     || subcommand.aliases.contains(&arg)
-                    || arg.chars().count() == 1 && arg.chars().next().unwrap() == *subcommand.short
+                    || arg_short == Some(*subcommand.short)
             })
-            .expect("subcommand must have matched in ParseStructSubCommand::matches");
+            .copied()
+    }
 
+    /// Invoke the subcommand parser for a subcommand already found by
+    /// [`ParseStructSubCommand::find_subcommand`].
+    fn parse(
+        &mut self,
+        help: bool,
+        cmd_name: &[&str],
+        subcommand: &CommandInfo,
+        remaining_args: &[&str],
+    ) -> Result<(), EarlyExit> {
         let mut command = cmd_name.to_owned();
         command.push(subcommand.name);
+
         let prepended_help;
         let remaining_args = if help {
             prepended_help = prepend_help(remaining_args);
@@ -1771,17 +1731,31 @@ impl ParseStructSubCommand<'_> {
 }
 
 // Prepend `help` to a list of arguments.
+
+// Prepend `help` to a list of arguments.
 // This is used to pass the `help` argument on to subcommands.
 fn prepend_help<'a>(args: &[&'a str]) -> Vec<&'a str> {
-    [&["help"], args].concat()
+    let mut out = Vec::with_capacity(args.len() + 1);
+    out.push("help");
+    out.extend_from_slice(args);
+    out
 }
 
 #[doc(hidden)]
-pub fn print_subcommands<'a>(commands: impl Iterator<Item = &'a CommandInfo>) -> String {
+#[must_use]
+pub fn print_subcommands(
+    static_commands: &[&CommandInfo],
+    dynamic_commands: &[&CommandInfo],
+) -> String {
     let mut out = String::new();
-    let commands: Vec<_> = commands.filter(|cmd| !cmd.hidden).collect();
-    let description_indent = argy_shared::description_indent(commands.iter().copied());
-    for cmd in commands {
+    let visible: Vec<&CommandInfo> = static_commands
+        .iter()
+        .chain(dynamic_commands.iter())
+        .copied()
+        .filter(|cmd| !cmd.hidden)
+        .collect();
+    let description_indent = argy_shared::description_indent(&visible);
+    for cmd in visible {
         argy_shared::write_description(&mut out, cmd, description_indent);
     }
     out
@@ -1821,16 +1795,20 @@ impl MissingRequirements {
         self.positional_args.push(name);
     }
 
-    // If any missing options or subcommands were provided, returns an error string
-    // describing the missing args, followed by the usage text.
-    #[doc(hidden)]
-    pub fn err_on_any(&self, usage: &str) -> Result<(), String> {
+    /// Returns an error string when required arguments are missing, else `Ok`.
+    ///
+    /// # Errors
+    ///
+    /// Returns `Err` with the missing-argument message plus usage when any
+    /// required option, subcommand, or positional argument was not provided.
+    pub fn err_on_any(&self, usage: &dyn Fn() -> String) -> Result<(), String> {
         if self.options.is_empty() && self.subcommands.is_none() && self.positional_args.is_empty()
         {
             return Ok(());
         }
 
         let mut output = String::new();
+        let usage = usage();
 
         if !self.positional_args.is_empty() {
             output.push_str("Required positional arguments not provided:");
@@ -1854,7 +1832,7 @@ impl MissingRequirements {
         if !output.is_empty() {
             output.push('\n');
         }
-        output.push_str(usage);
+        output.push_str(&usage);
 
         Err(output)
     }

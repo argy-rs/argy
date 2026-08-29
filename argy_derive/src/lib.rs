@@ -687,7 +687,7 @@ fn impl_from_args_struct_from_args<'a>(
 
             let mut __seen = [false; #num_option_slots];
 
-            let __usage = #help;
+            let __usage = || #help;
 
             argy::parse_struct_args(
                 __cmd_name,
@@ -714,7 +714,7 @@ fn impl_from_args_struct_from_args<'a>(
                     last_is_greedy: #last_positional_is_greedy,
                 },
                 #parse_subcommands,
-                &|| __usage.clone(),
+                &__usage,
                 #version_func,
             )?;
 
@@ -1010,7 +1010,7 @@ fn impl_from_args_struct_from_args_flatten<'a>(
 
             #( #flatten_append )*
 
-            let __usage = #help;
+            let __usage = || #help;
 
             argy::parse_struct_args(
                 __cmd_name,
@@ -1030,7 +1030,7 @@ fn impl_from_args_struct_from_args_flatten<'a>(
                     last_is_greedy: __last_is_greedy,
                 },
                 __subcommand,
-                &|| __usage.clone(),
+                &__usage,
                 #version_func,
             )?;
 
@@ -1527,7 +1527,7 @@ fn impl_from_args_struct_redact_arg_values<'a>(
 
             let mut __seen = [false; #num_option_slots];
 
-            let __usage = #help;
+            let __usage = || #help;
 
             argy::parse_struct_args(
                 __cmd_name,
@@ -1554,7 +1554,7 @@ fn impl_from_args_struct_redact_arg_values<'a>(
                     last_is_greedy: #last_positional_is_greedy,
                 },
                 #redact_subcommands,
-                &|| __usage.clone(),
+                &__usage,
                 #version_func,
             )?;
 

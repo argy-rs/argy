@@ -226,11 +226,10 @@ pub fn write_description(out: &mut String, cmd: &CommandInfo<'_>, description_in
     new_line(&mut current_line, out);
 }
 
-/// Returns the column at which descriptions should start so that every name in
-/// `commands` is left-aligned with a [`DESCRIPTION_PADDING`]-space separator,
-/// growing with the longest name in the group.
-pub fn description_indent<'a>(commands: impl Iterator<Item = &'a CommandInfo<'a>>) -> usize {
+#[must_use]
+pub fn description_indent(commands: &[&CommandInfo<'_>]) -> usize {
     let max_name = commands
+        .iter()
         .map(|cmd| {
             let mut len = INDENT.chars().count() + char_len(cmd.name);
             if *cmd.short != '\0' {

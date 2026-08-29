@@ -163,13 +163,8 @@ pub fn help(
         subcommand_format_arg = quote! { , subcommands = subcommands };
         subcommand_calculation = quote! {
             let subcommands = argy::print_subcommands(
-                <#subcommand_ty as argy::SubCommands>::COMMANDS
-                    .iter()
-                    .copied()
-                    .chain(
-                        <#subcommand_ty as argy::SubCommands>::dynamic_commands()
-                            .iter()
-                            .copied())
+                <#subcommand_ty as argy::SubCommands>::COMMANDS,
+                <#subcommand_ty as argy::SubCommands>::dynamic_commands(),
             );
         };
     } else {

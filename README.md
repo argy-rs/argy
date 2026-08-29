@@ -14,6 +14,14 @@ derive and the `from_env` function, which can be used to produce
 a top-level `FromArgs` type from the current program's commandline
 arguments.
 
+## Acknowledgments
+
+Argy is a fork of [`argh`](https://github.com/google/argh), a
+derive-based argument parser written by Taylor Cramer, Benjamin
+Brittain, and Erick Tryzelaar (Google), itself derived from the Fuchsia
+command-line tools. The original BSD-3-Clause copyright is retained in
+`LICENSE`.
+
 ## Basic Example
 
 ```rust,no_run
@@ -288,12 +296,6 @@ scope.
 
 ## Value enums
 
-## Value enums
-
-## Value enums
-
-## Value enums
-
 Fieldless enums can derive `argy::ValueEnum` to get standalone parsing and
 rendering without a manual `FromStr` impl. The derive implements
 `std::str::FromStr`, `std::fmt::Display`, the `argy::ValueEnum` trait
@@ -534,7 +536,3 @@ See [argy/examples/simple_example.rs](./argy/examples/simple_example.rs) for the
 First, install `cargo-expand` by running `cargo install cargo-expand`. Note this requires the nightly build of Rust.
 
 Once installed, run `cargo expand` with in the `argy` package and you can see the expanded code.
-
-## Note
-
-This is not an officially supported Google product.

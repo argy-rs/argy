@@ -225,6 +225,39 @@ fn global_value_option_accepted_after_subcommand() {
 }
 
 #[test]
+fn global_value_option_inline_after_subcommand() {
+    #[derive(FromArgs, PartialEq, Debug)]
+    /// Top-level command.
+    struct TopLevel {
+        /// verbosity level
+        #[argy(option, global)]
+        verbose: Option<u32>,
+
+        /// command to execute
+        #[argy(subcommand)]
+        nested: MySubCommandEnum,
+    }
+
+    #[derive(FromArgs, PartialEq, Debug)]
+    #[argy(subcommand)]
+    enum MySubCommandEnum {
+        Atuin(Atuin),
+    }
+
+    #[derive(FromArgs, PartialEq, Debug)]
+    /// Import into atuin.
+    #[argy(subcommand, name = "atuin")]
+    struct Atuin {}
+
+    // A global value option written with an inline `=` after the subcommand
+    // must be recognized (same as the `--verbose 4` space form), not passed
+    // through to the subcommand as an unrecognized argument.
+    let after =
+        TopLevel::from_args(&["cmd"], &["atuin", "--verbose=4"]).expect("inline after subcommand");
+    assert_eq!(after, TopLevel { verbose: Some(4), nested: MySubCommandEnum::Atuin(Atuin {}) });
+}
+
+#[test]
 fn non_global_option_rejected_after_subcommand() {
     #[derive(FromArgs, PartialEq, Debug)]
     /// Top-level command.
@@ -520,7 +553,7 @@ fn help_render_author_when_set() {
     // CARGO_PKG_AUTHORS is set for this crate, so `#[argy(author)]` must render it.
     assert!(output.contains("Author:"), "author metadata should render when set:\n{}", output);
     assert!(
-        output.contains("Taylor Cramer"),
+        output.contains(env!("CARGO_PKG_AUTHORS")),
         "author metadata should contain the crate author:\n{}",
         output
     );
@@ -952,6 +985,29 @@ fn env_satisfies_required_option() {
     let cmd = Cmd::from_args(&["cmdname"], &[]).unwrap();
     std::env::remove_var("ARGY_TEST_ENV_OPT_REQUIRED");
     assert_eq!(cmd.x, 42);
+}
+
+#[test]
+fn requires_satisfied_by_env() {
+    #[derive(FromArgs, PartialEq, Debug)]
+    /// Deploy command
+    struct Deploy {
+        #[argy(option, requires = "token")]
+        /// deployment environment
+        env: Option<String>,
+        #[argy(option, env = "ARGY_TEST_REQUIRES_TOKEN")]
+        /// auth token
+        token: Option<String>,
+    }
+
+    // `--env prod` requires `--token`; the requirement is satisfied by the
+    // env-provided token, so the parse must not be rejected as missing.
+    std::env::set_var("ARGY_TEST_REQUIRES_TOKEN", "secret");
+    let r = Deploy::from_args(&["deploy"], &["--env", "prod"]);
+    std::env::remove_var("ARGY_TEST_REQUIRES_TOKEN");
+    let deploy = r.expect("env-provided token should satisfy `requires`");
+    assert_eq!(deploy.env.as_deref(), Some("prod"));
+    assert_eq!(deploy.token.as_deref(), Some("secret"));
 }
 
 #[test]

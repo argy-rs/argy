@@ -1822,6 +1822,7 @@ fn env_fill_fields<'a>(fields: &'a [StructField<'a>]) -> Vec<TokenStream> {
                                         (#name.parse_func)(#env_name, &__env_val)
                                     {
                                         #name.slot = ::core::option::Option::Some(__env_parsed);
+                                        __seen[#idx] = true;
                                     }
                                 }
                             }
@@ -1840,6 +1841,7 @@ fn env_fill_fields<'a>(fields: &'a [StructField<'a>]) -> Vec<TokenStream> {
                                     };
                                     if __env_truthy {
                                         argy::Flag::set_flag(&mut #name);
+                                        __seen[#idx] = true;
                                     }
                                 }
                             }

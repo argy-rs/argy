@@ -954,6 +954,10 @@ pub fn from_env<T: TopLevelCommand>() -> T {
 #[must_use]
 pub fn cargo_from_env<T: TopLevelCommand>() -> T {
     let strings: Vec<String> = std::env::args().collect();
+    if strings.len() < 2 {
+        eprintln!("Cargo build invocation missing the crate-name argument; argv is empty");
+        std::process::exit(1);
+    }
     let cmd = cmd(&strings[1], &strings[1]);
     let strs: Vec<&str> = strings.iter().map(String::as_str).collect();
     T::from_args(&[cmd], &strs[2..]).unwrap_or_else(|early_exit| {
@@ -1462,7 +1466,14 @@ impl ParseStructOptions<'_, '_> {
                 filtered.extend_from_slice(&args[idx..]);
                 break;
             }
-            if self.global_options.contains(&arg) {
+            // A `global` option may appear in its exact form (`--name` or `-n`) or with
+            // an inline value (`--name=value`), matching the pre-subcommand
+            // parse path which splits the inline `=` form.
+            let global_base = match arg.find('=') {
+                Some(eq) if arg.starts_with("--") => &arg[..eq],
+                _ => arg,
+            };
+            if self.global_options.contains(&global_base) {
                 // `parse` expects the arguments *after* the flag itself.
                 let mut remaining = &args[idx + 1..];
                 let rem_before = remaining.len();

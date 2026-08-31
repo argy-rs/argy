@@ -1,5 +1,5 @@
 [workspace.package]
-version = "0.1.19"
+version = "0.1.20"
 authors = ["Haydon Ryan <haydon.ryan@gmail.com>"]
 edition = "2018"
 license = "BSD-3-Clause"
@@ -15,5 +15,5 @@ members = [
 ]
 
 [workspace.dependencies]
-argy_shared = { version = "0.1.19", path = "argy_shared" }
-argy_derive = { version = "0.1.19", path = "argy_derive" }
+argy_shared = { version = "0.1.20", path = "argy_shared" }
+argy_derive = { version = "0.1.20", path = "argy_derive" }

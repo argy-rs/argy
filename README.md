@@ -22,6 +22,12 @@ Brittain, and Erick Tryzelaar (Google), itself derived from the Fuchsia
 command-line tools. The original BSD-3-Clause copyright is retained in
 `LICENSE`.
 
+While `argh` is designed to work within Fuchsia's non-Cargo build
+environment, Argy is adapted for Cargo-based Rust projects and provides a
+more clap-like feature set and developer experience. The project began after
+its author was surprised by clap's impact on binary size, so maintaining a
+minimal binary footprint remains a core design goal.
+
 ## Basic Example
 
 ```rust,no_run

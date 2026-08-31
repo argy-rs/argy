@@ -796,7 +796,7 @@ fn get_version_triggers(type_attrs: &TypeAttrs) -> Vec<String> {
     version_triggers
 }
 
-/// Generate the `version_func` closure passed to [`argy::parse_struct_args`].
+/// Generate the `version_func` closure passed to `argy::parse_struct_args`.
 ///
 /// For a subcommand this prints a subcommand-qualified name like clap's
 /// `zoxide-add 0.10.0` (i.e. `<crate>-<subcommand> <version>`), while the

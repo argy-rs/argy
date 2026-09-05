@@ -6,4 +6,3 @@ test:
 check:
     cargo fmt --all -- --check
     cargo clippy --workspace --all-targets --all-features -- -D warnings -W clippy::pedantic -W clippy::nursery
-    cargo test --workspace --all-features

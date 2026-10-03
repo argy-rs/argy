@@ -19,3 +19,6 @@ argy_shared.workspace = true
 
 [features]
 help = []
+
+[lints]
+workspace = true

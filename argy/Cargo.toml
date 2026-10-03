@@ -24,3 +24,6 @@ default = ["help", "serde"]
 help = ["argy_derive/help"]
 serde = ["argy_shared/serde"]
 fuzzy_search = ["dep:rust-fuzzy-search"]
+
+[lints]
+workspace = true

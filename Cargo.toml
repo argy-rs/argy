@@ -17,3 +17,8 @@ members = [
 [workspace.dependencies]
 argy_shared = { version = "0.1.20", path = "argy_shared" }
 argy_derive = { version = "0.1.20", path = "argy_derive" }
+
+[workspace.lints.clippy]
+all = { level = "warn", priority = -1 }
+pedantic = { level = "warn", priority = -1 }
+nursery = { level = "warn", priority = -1 }

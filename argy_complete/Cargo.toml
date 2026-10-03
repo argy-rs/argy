@@ -10,3 +10,6 @@ readme = "README.md"
 
 [dependencies]
 argy_shared.workspace = true
+
+[lints]
+workspace = true

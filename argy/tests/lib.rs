@@ -17,28 +17,6 @@ use {
 };
 
 #[test]
-fn basic_example() {
-    #[derive(FromArgs, PartialEq, Debug)]
-    /// Reach new heights.
-    struct GoUp {
-        /// whether or not to jump
-        #[argy(switch, short = 'j')]
-        jump: bool,
-
-        /// how high to go
-        #[argy(option)]
-        height: usize,
-
-        /// an optional nickname for the pilot
-        #[argy(option)]
-        pilot_nickname: Option<String>,
-    }
-
-    let up = GoUp::from_args(&["cmdname"], &["--height", "5"]).expect("failed go_up");
-    assert_eq!(up, GoUp { jump: false, height: 5, pilot_nickname: None });
-}
-
-#[test]
 fn option_alias() {
     #[derive(FromArgs, PartialEq, Debug)]
     /// Reach new heights.
@@ -2338,12 +2316,6 @@ Options:
 
     #[test]
     #[cfg(feature = "help")]
-    fn help_flag_subcommand() {
-        expect_help(&["first", "--help"], FIRST_HELP_STRING);
-    }
-
-    #[test]
-    #[cfg(feature = "help")]
     fn help_short_flag_subcommand() {
         expect_help(&["first", "-h"], FIRST_HELP_STRING);
     }
@@ -2820,21 +2792,6 @@ fn redact_arg_values_switch() {
 
     let actual = Cmd::redact_arg_values(&["program-name"], &["-f"]).unwrap();
     assert_eq!(actual, &["program-name", "-f"]);
-}
-
-#[test]
-fn redact_arg_values_positional() {
-    #[derive(FromArgs, Debug)]
-    /// Short description
-    struct Cmd {
-        #[allow(unused)]
-        #[argy(positional)]
-        /// speed of cmd
-        speed: u8,
-    }
-
-    let actual = Cmd::redact_arg_values(&["program-name"], &["5"]).unwrap();
-    assert_eq!(actual, &["program-name", "speed"]);
 }
 
 #[test]

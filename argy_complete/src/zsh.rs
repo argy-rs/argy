@@ -67,6 +67,7 @@ fn generate_zsh_args(out: &mut String, prefix: &str, cmd: &CommandInfoWithArgs<'
         let mut def = String::new();
         let desc = flag
             .description
+            .replace(['\r', '\n'], " ")
             .replace('[', "\\[")
             .replace(']', "\\]")
             .replace('\'', "'\\''")
@@ -103,7 +104,12 @@ fn generate_zsh_args(out: &mut String, prefix: &str, cmd: &CommandInfoWithArgs<'
         writeln!(out, "{ind}        local -a subcommands").unwrap();
         writeln!(out, "{ind}        subcommands=(").unwrap();
         for subcmd in cmd.commands.iter().filter(|s| !s.command.hidden) {
-            let desc = subcmd.command.description.replace('\'', "'\\''").replace(':', "\\:");
+            let desc = subcmd
+                .command
+                .description
+                .replace(['\r', '\n'], " ")
+                .replace('\'', "'\\''")
+                .replace(':', "\\:");
             writeln!(out, "{ind}            '{}:{desc}'", subcmd.name).unwrap();
         }
         writeln!(out, "{ind}        )").unwrap();

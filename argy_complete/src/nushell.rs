@@ -50,7 +50,7 @@ fn generate_nushell_cmd(out: &mut String, cmd_name: &str, cmd: &CommandInfoWithA
         }
 
         if !flag.description.is_empty() {
-            let _ = write!(flag_def, " # {}", flag.description);
+            let _ = write!(flag_def, " # {}", crate::escape_description(flag.description));
         }
 
         writeln!(out, "    {flag_def}").unwrap();
@@ -74,7 +74,7 @@ fn generate_nushell_cmd(out: &mut String, cmd_name: &str, cmd: &CommandInfoWithA
         }
 
         if !pos.description.is_empty() {
-            let _ = write!(pos_def, " # {}", pos.description);
+            let _ = write!(pos_def, " # {}", crate::escape_description(pos.description));
         }
 
         writeln!(out, "    {pos_def}").unwrap();

@@ -204,3 +204,82 @@ fn test_safe_cmd_name_and_ident_sanitization() {
     // Metacharacters and whitespace are stripped.
     assert_eq!(crate::sanitize_ident("evil$(x) y"), "evilxy");
 }
+
+fn make_escaping_command() -> CommandInfoWithArgs<'static> {
+    let sub = CommandInfoWithArgs {
+        name: "sub",
+        description: "line one\nit's got a quote",
+        ..Default::default()
+    };
+    CommandInfoWithArgs {
+        name: "mycmd",
+        description: "A command",
+        flags: &[FlagInfo {
+            kind: FlagInfoKind::Switch,
+            optionality: Optionality::Optional,
+            long: "--flag",
+            short: None,
+            description: "flag one\nit's a flag",
+            hidden: false,
+            aliases: &[],
+        }],
+        commands: vec![SubCommandInfo { name: "sub", command: sub }],
+        ..Default::default()
+    }
+}
+
+#[test]
+fn test_zsh_description_escaping() {
+    let cmd = make_escaping_command();
+    let zsh_out = crate::zsh::Zsh::generate("mycmd", &cmd);
+
+    // Newline collapsed, single quote escaped zsh-style ('\''), inside [{desc}].
+    assert!(
+        zsh_out.contains("[flag one it'\\''s a flag]"),
+        "zsh flag description should be escaped, got: {}",
+        zsh_out
+    );
+    // Subcommand description inside 'name:desc'.
+    assert!(
+        zsh_out.contains("'sub:line one it'\\''s got a quote'"),
+        "zsh subcommand description should be escaped, got: {}",
+        zsh_out
+    );
+    // The embedded newlines must not survive into the emitted script.
+    assert!(!zsh_out.contains("flag one\n"), "zsh flag newline breakout");
+    assert!(!zsh_out.contains("line one\n"), "zsh subcommand newline breakout");
+}
+
+#[test]
+fn test_fish_description_escaping() {
+    let cmd = make_escaping_command();
+    let fish_out = crate::fish::Fish::generate("mycmd", &cmd);
+
+    // Newline collapsed, single quote escaped with backslash, inside -d '...'.
+    assert!(
+        fish_out.contains("-l flag -d 'flag one it\\'s a flag'"),
+        "fish flag description should be escaped, got: {}",
+        fish_out
+    );
+    assert!(
+        fish_out.contains("-a 'sub' -d 'line one it\\'s got a quote'"),
+        "fish subcommand description should be escaped, got: {}",
+        fish_out
+    );
+    assert!(!fish_out.contains("flag one\n"), "fish flag newline breakout");
+    assert!(!fish_out.contains("line one\n"), "fish subcommand newline breakout");
+}
+
+#[test]
+fn test_nushell_description_escaping() {
+    let cmd = make_escaping_command();
+    let nushell_out = crate::nushell::Nushell::generate("mycmd", &cmd);
+
+    // Newline collapsed, single quote escaped, inside a '# ' comment.
+    assert!(
+        nushell_out.contains("--flag # flag one it\\'s a flag"),
+        "nushell flag description should be escaped, got: {}",
+        nushell_out
+    );
+    assert!(!nushell_out.contains("flag one\n"), "nushell flag newline breakout");
+}

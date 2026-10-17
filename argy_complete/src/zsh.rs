@@ -73,6 +73,7 @@ fn generate_zsh_args(out: &mut String, prefix: &str, cmd: &CommandInfoWithArgs<'
         let long = crate::sanitize_ident(flag.long);
         let desc = flag
             .description
+            .replace(['\r', '\n'], " ")
             .replace('[', "\\[")
             .replace(']', "\\]")
             .replace('\'', "'\\''")
@@ -110,7 +111,12 @@ fn generate_zsh_args(out: &mut String, prefix: &str, cmd: &CommandInfoWithArgs<'
         writeln!(out, "{ind}        subcommands=(").unwrap();
         for subcmd in cmd.commands.iter().filter(|s| !s.command.hidden) {
             let name = crate::sanitize_ident(subcmd.name);
-            let desc = subcmd.command.description.replace('\'', "'\\''").replace(':', "\\:");
+            let desc = subcmd
+                .command
+                .description
+                .replace(['\r', '\n'], " ")
+                .replace('\'', "'\\''")
+                .replace(':', "\\:");
             writeln!(out, "{ind}            '{name}:{desc}'").unwrap();
         }
         writeln!(out, "{ind}        )").unwrap();

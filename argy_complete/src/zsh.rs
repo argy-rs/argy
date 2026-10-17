@@ -15,27 +15,31 @@ impl Generator for Zsh {
     fn generate(cmd_name: &str, cmd: &CommandInfoWithArgs<'_>) -> String {
         let mut out = String::new();
 
-        writeln!(&mut out, "#compdef {cmd_name}").unwrap();
+        // The runtime cmd_name (argv[0] basename) is attacker-influenced; sanitize it to a safe
+        // shell identifier before interpolating into the emitted script.
+        let safe = crate::safe_cmd_name(cmd_name);
+
+        writeln!(&mut out, "#compdef {safe}").unwrap();
         writeln!(&mut out).unwrap();
-        writeln!(&mut out, "_{cmd_name}() {{").unwrap();
+        writeln!(&mut out, "_{safe}() {{").unwrap();
         writeln!(&mut out, "    local context state state_descr line").unwrap();
         writeln!(&mut out, "    typeset -A opt_args").unwrap();
         writeln!(&mut out).unwrap();
 
-        generate_zsh_args(&mut out, cmd_name, cmd, 1);
+        generate_zsh_args(&mut out, &safe, cmd, 1);
 
         writeln!(&mut out, "}}").unwrap();
         writeln!(&mut out).unwrap();
 
         // Generate functions for subcommands
         for subcmd in cmd.commands.iter().filter(|s| !s.command.hidden) {
-            generate_zsh_subcmd(&mut out, cmd_name, &subcmd.command);
+            generate_zsh_subcmd(&mut out, &safe, &subcmd.command);
         }
 
-        writeln!(&mut out, "if [[ $funcstack[1] == _{cmd_name} ]]; then").unwrap();
-        writeln!(&mut out, "    _{cmd_name} \"$@\"").unwrap();
+        writeln!(&mut out, "if [[ $funcstack[1] == _{safe} ]]; then").unwrap();
+        writeln!(&mut out, "    _{safe} \"$@\"").unwrap();
         writeln!(&mut out, "else").unwrap();
-        writeln!(&mut out, "    compdef _{cmd_name} {cmd_name}").unwrap();
+        writeln!(&mut out, "    compdef _{safe} {safe}").unwrap();
         writeln!(&mut out, "fi").unwrap();
 
         out
@@ -43,7 +47,8 @@ impl Generator for Zsh {
 }
 
 fn generate_zsh_subcmd(out: &mut String, prefix: &str, cmd: &CommandInfoWithArgs<'_>) {
-    let full_name = format!("{prefix}_{cmd_name}", cmd_name = cmd.name);
+    let name = crate::sanitize_ident(cmd.name);
+    let full_name = format!("{prefix}_{name}");
     writeln!(out, "_{full_name}() {{").unwrap();
     writeln!(out, "    local context state state_descr line").unwrap();
     writeln!(out, "    typeset -A opt_args").unwrap();
@@ -65,6 +70,7 @@ fn generate_zsh_args(out: &mut String, prefix: &str, cmd: &CommandInfoWithArgs<'
 
     for flag in cmd.flags {
         let mut def = String::new();
+        let long = crate::sanitize_ident(flag.long);
         let desc = flag
             .description
             .replace('[', "\\[")
@@ -77,9 +83,9 @@ fn generate_zsh_args(out: &mut String, prefix: &str, cmd: &CommandInfoWithArgs<'
 
         if has_short && has_long {
             let short = format!("-{}", flag.short.unwrap());
-            let _ = write!(def, "'({short} {long})'{{{short},{long}}}'[{desc}]'", long = flag.long);
+            let _ = write!(def, "'({short} {long})'{{{short},{long}}}'[{desc}]'");
         } else if has_long {
-            let _ = write!(def, "'{long}[{desc}]'", long = flag.long);
+            let _ = write!(def, "'{long}[{desc}]'");
         } else if has_short {
             let short = format!("-{}", flag.short.unwrap());
             let _ = write!(def, "'{short}[{desc}]'");
@@ -103,21 +109,27 @@ fn generate_zsh_args(out: &mut String, prefix: &str, cmd: &CommandInfoWithArgs<'
         writeln!(out, "{ind}        local -a subcommands").unwrap();
         writeln!(out, "{ind}        subcommands=(").unwrap();
         for subcmd in cmd.commands.iter().filter(|s| !s.command.hidden) {
+            let name = crate::sanitize_ident(subcmd.name);
             let desc = subcmd.command.description.replace('\'', "'\\''").replace(':', "\\:");
-            writeln!(out, "{ind}            '{}:{desc}'", subcmd.name).unwrap();
+            writeln!(out, "{ind}            '{name}:{desc}'").unwrap();
         }
         writeln!(out, "{ind}        )").unwrap();
         writeln!(out, "{ind}        if (( CURRENT == 1 )); then").unwrap();
-        writeln!(out, "{ind}          _describe -t commands '{} commands' subcommands", cmd.name)
-            .unwrap();
+        writeln!(
+            out,
+            "{ind}          _describe -t commands '{} commands' subcommands",
+            crate::sanitize_ident(cmd.name)
+        )
+        .unwrap();
         writeln!(out, "{ind}            return").unwrap();
         writeln!(out, "{ind}        fi").unwrap();
         writeln!(out, "{ind}        local cmd=$words[1]").unwrap();
         writeln!(out, "{ind}        curcontext=\"${{curcontext%:*:*}}:{prefix}-$cmd\"").unwrap();
         writeln!(out, "{ind}        case $cmd in").unwrap();
         for subcmd in cmd.commands.iter().filter(|s| !s.command.hidden) {
-            writeln!(out, "{ind}            ({})", subcmd.name).unwrap();
-            writeln!(out, "{ind}                _{prefix}_{}", subcmd.name).unwrap();
+            let name = crate::sanitize_ident(subcmd.name);
+            writeln!(out, "{ind}            ({name})").unwrap();
+            writeln!(out, "{ind}                _{prefix}_{name}").unwrap();
             writeln!(out, "{ind}                ;;").unwrap();
         }
         writeln!(out, "{ind}        esac").unwrap();

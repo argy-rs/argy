@@ -32,6 +32,10 @@ impl Generator for Fish {
     fn generate(cmd_name: &str, cmd: &CommandInfoWithArgs<'_>) -> String {
         let mut out = String::new();
 
+        // The runtime cmd_name (argv[0] basename) is attacker-influenced; sanitize it to a safe
+        // shell identifier before interpolating into the emitted script.
+        let safe = crate::safe_cmd_name(cmd_name);
+
         let mut value_flags = Vec::new();
         collect_value_flags(cmd, &mut value_flags);
 
@@ -46,7 +50,7 @@ impl Generator for Fish {
         // Generate the custom parsing state machine function that replaces `__fish_seen_subcommand_from`
         writeln!(
             out,
-            "function __fish_{cmd_name}_using_command\n\
+            "function __fish_{safe}_using_command\n\
             \x20   set -l cmd (commandline -xpc)\n\
             \x20   set -e cmd[1]\n\
             \x20   set -l target_cmd $argv\n\
@@ -91,7 +95,7 @@ impl Generator for Fish {
         )
         .unwrap();
 
-        generate_fish_cmd(&mut out, cmd_name, cmd_name, cmd, &[]);
+        generate_fish_cmd(&mut out, &safe, &safe, cmd, &[]);
         out
     }
 }
@@ -101,7 +105,7 @@ fn generate_fish_cmd(
     bin_name: &str,
     base_cmd: &str,
     cmd: &CommandInfoWithArgs<'_>,
-    parent_subcommands: &[&str],
+    parent_subcommands: &[String],
 ) {
     let joined_condition = if parent_subcommands.is_empty() {
         format!("-n '__fish_{bin_name}_using_command'")
@@ -124,7 +128,7 @@ fn generate_fish_cmd(
         line.push_str(no_files);
 
         if !flag.long.is_empty() {
-            let stripped_long = flag.long.trim_start_matches('-');
+            let stripped_long = crate::sanitize_ident(flag.long.trim_start_matches('-'));
             if !stripped_long.is_empty() {
                 let _ = write!(line, " -l {stripped_long}");
             }
@@ -157,7 +161,7 @@ fn generate_fish_cmd(
         let _ = write!(
             line,
             " -f -a '{}' -d '{}'",
-            subcmd.name,
+            crate::sanitize_ident(subcmd.name),
             subcmd.command.description.replace('\'', "\\'")
         );
         writeln!(out, "{line}").unwrap();
@@ -166,7 +170,7 @@ fn generate_fish_cmd(
     // Recurse
     for subcmd in cmd.commands.iter().filter(|s| !s.command.hidden) {
         let mut new_parents = parent_subcommands.to_vec();
-        new_parents.push(subcmd.name);
+        new_parents.push(crate::sanitize_ident(subcmd.name));
         generate_fish_cmd(out, bin_name, base_cmd, &subcmd.command, &new_parents);
     }
 }

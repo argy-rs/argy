@@ -14,7 +14,10 @@ pub struct Nushell;
 impl Generator for Nushell {
     fn generate(cmd_name: &str, cmd: &CommandInfoWithArgs<'_>) -> String {
         let mut out = String::new();
-        generate_nushell_cmd(&mut out, cmd_name, cmd);
+        // The runtime cmd_name (argv[0] basename) is attacker-influenced; sanitize it to a safe
+        // shell identifier before interpolating into the emitted script.
+        let safe = crate::safe_cmd_name(cmd_name);
+        generate_nushell_cmd(&mut out, &safe, cmd);
         out
     }
 }
@@ -28,7 +31,7 @@ fn generate_nushell_cmd(out: &mut String, cmd_name: &str, cmd: &CommandInfoWithA
         let mut flag_def = String::new();
 
         if !flag.long.is_empty() {
-            flag_def.push_str(flag.long);
+            flag_def.push_str(&crate::sanitize_ident(flag.long));
         }
 
         if let Some(short) = flag.short {
@@ -55,7 +58,7 @@ fn generate_nushell_cmd(out: &mut String, cmd_name: &str, cmd: &CommandInfoWithA
 
     // Generate positional arguments
     for pos in cmd.positionals {
-        let name = if pos.name.is_empty() { "arg" } else { pos.name };
+        let name = crate::sanitize_ident(if pos.name.is_empty() { "arg" } else { pos.name });
 
         let mut pos_def = String::new();
         match pos.optionality {
@@ -82,7 +85,7 @@ fn generate_nushell_cmd(out: &mut String, cmd_name: &str, cmd: &CommandInfoWithA
 
     // Recurse for subcommands
     for subcmd in cmd.commands.iter().filter(|s| !s.command.hidden) {
-        let next_cmd_name = format!("{cmd_name} {}", subcmd.name);
+        let next_cmd_name = format!("{cmd_name} {}", crate::sanitize_ident(subcmd.name));
         generate_nushell_cmd(out, &next_cmd_name, &subcmd.command);
     }
 }

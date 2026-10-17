@@ -20,7 +20,11 @@ impl Generator for Bash {
         // Basic bash completion uses `complete -F _func cmd`
         // We'll generate a recursive function structure for subcommands.
 
-        writeln!(&mut out, "_{cmd_name}() {{").unwrap();
+        // The runtime cmd_name (argv[0] basename) is attacker-influenced; sanitize it to a safe
+        // shell identifier before interpolating into the emitted script.
+        let safe = crate::safe_cmd_name(cmd_name);
+
+        writeln!(&mut out, "_{safe}() {{").unwrap();
         writeln!(&mut out, "    local i cur prev opts cmds").unwrap();
         writeln!(&mut out, "    COMPREPLY=()").unwrap();
         writeln!(&mut out, "    cur=\"${{COMP_WORDS[COMP_CWORD]}}\"").unwrap();
@@ -36,14 +40,14 @@ impl Generator for Bash {
         // Find the current command by traversing from the beginning
         writeln!(&mut out, "    for i in ${{COMP_WORDS[@]}}; do").unwrap();
         writeln!(&mut out, "        case \"${{i}}\" in").unwrap();
-        writeln!(&mut out, "            {cmd_name} | */{cmd_name})").unwrap();
-        writeln!(&mut out, "                cmd=\"{cmd_name}\"").unwrap();
+        writeln!(&mut out, "            {safe} | */{safe})").unwrap();
+        writeln!(&mut out, "                cmd=\"{safe}\"").unwrap();
         writeln!(&mut out, "                ;;").unwrap();
         for subcmd in cmd.commands.iter().filter(|s| !s.command.hidden) {
             // Also need to handle nested subcommands, but bash scripts often hardcode
             // the full path like `cmd_subcmd` depending on how nested it is.
             // Let's keep it simple for a single level first or nested if needed.
-            generate_bash_case(&mut out, cmd_name, &subcmd.command);
+            generate_bash_case(&mut out, &safe, &subcmd.command);
         }
         writeln!(&mut out, "        esac").unwrap();
         writeln!(&mut out, "    done").unwrap();
@@ -51,19 +55,20 @@ impl Generator for Bash {
 
         // Now dispatch based on the determined `cmd`
         writeln!(&mut out, "    case \"${{cmd}}\" in").unwrap();
-        generate_all_dispatch(&mut out, cmd_name, cmd);
+        generate_all_dispatch(&mut out, &safe, cmd);
         writeln!(&mut out, "    esac").unwrap();
         writeln!(&mut out, "}}").unwrap();
         writeln!(&mut out).unwrap();
-        writeln!(&mut out, "complete -F _{cmd_name} -o bashdefault -o default {cmd_name}").unwrap();
+        writeln!(&mut out, "complete -F _{safe} -o bashdefault -o default {safe}").unwrap();
 
         out
     }
 }
 
 fn generate_bash_case(out: &mut String, prefix: &str, cmd: &CommandInfoWithArgs<'_>) {
-    let full_name = format!("{}_{}", prefix, cmd.name);
-    writeln!(out, "            {})", cmd.name).unwrap();
+    let name = crate::sanitize_ident(cmd.name);
+    let full_name = format!("{prefix}_{name}");
+    writeln!(out, "            {name})").unwrap();
     writeln!(out, "                cmd=\"{full_name}\"").unwrap();
     writeln!(out, "                ;;").unwrap();
     for subcmd in &cmd.commands {
@@ -79,7 +84,7 @@ fn generate_bash_dispatch(out: &mut String, full_name: &str, cmd: &CommandInfoWi
     let mut opts = Vec::new();
     for flag in cmd.flags {
         if !flag.long.is_empty() {
-            opts.push(flag.long.to_string());
+            opts.push(crate::sanitize_ident(flag.long));
         }
         if let Some(short) = flag.short {
             opts.push(format!("-{short}"));
@@ -88,7 +93,7 @@ fn generate_bash_dispatch(out: &mut String, full_name: &str, cmd: &CommandInfoWi
 
     let mut cmds = Vec::new();
     for subcmd in cmd.commands.iter().filter(|s| !s.command.hidden) {
-        cmds.push(subcmd.name.to_string());
+        cmds.push(crate::sanitize_ident(subcmd.name));
     }
 
     if !opts.is_empty() {
@@ -104,7 +109,7 @@ fn generate_bash_dispatch(out: &mut String, full_name: &str, cmd: &CommandInfoWi
             if let FlagInfoKind::Option { .. } = flag.kind {
                 let mut prev_matches = Vec::new();
                 if !flag.long.is_empty() {
-                    prev_matches.push(flag.long.to_string());
+                    prev_matches.push(crate::sanitize_ident(flag.long));
                 }
                 if let Some(short) = flag.short {
                     prev_matches.push(format!("-{short}"));

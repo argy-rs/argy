@@ -139,7 +139,7 @@ fn generate_fish_cmd(
         }
 
         if !flag.description.is_empty() {
-            let description = flag.description.replace('\'', "\\'");
+            let description = crate::escape_description(flag.description);
             let _ = write!(line, " -d '{description}'");
         }
 
@@ -158,7 +158,7 @@ fn generate_fish_cmd(
             line,
             " -f -a '{}' -d '{}'",
             subcmd.name,
-            subcmd.command.description.replace('\'', "\\'")
+            crate::escape_description(subcmd.command.description)
         );
         writeln!(out, "{line}").unwrap();
     }
